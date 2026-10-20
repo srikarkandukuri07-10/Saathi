@@ -1,0 +1,21 @@
+{
+  "name": "Hackpact - External Hackathon Teammates",
+  "short_name": "Hackpact",
+  "description": "Find serious, complementary teammates for external hackathons in India.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#B8F2C9",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
