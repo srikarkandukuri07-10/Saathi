@@ -8,45 +8,62 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TeamService } from "@/lib/services/team";
+import { Alert } from "@/components/ui/alert";
 import { APP_CONFIG } from "@/config/site";
 import { Plus, Trash2, ArrowRight, ShieldCheck, Users } from "lucide-react";
 
 function NewTeamForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialHackathonId = searchParams.get("hackathonId") || "20000000-0000-0000-0000-000000000001";
+  const initialHackathonId = searchParams.get("hackathonId") ?? "";
 
+  const [hackathons, setHackathons] = React.useState<
+    Array<{ id: string; name: string; city_name?: string }>
+  >([]);
   const [hackathonId, setHackathonId] = React.useState(initialHackathonId);
-  const [teamName, setTeamName] = React.useState("HyperScale Vision");
-  const [description, setDescription] = React.useState(
-    "Building an autonomous computer vision edge processing pipeline for smart traffic and drone monitoring."
-  );
-  const [githubRepoUrl, setGithubRepoUrl] = React.useState("https://github.com/hyperscale-vision/pipeline");
-  const [ideaBoard, setIdeaBoard] = React.useState(
-    "1. Dataset curation from public CCTV feeds\n2. Realtime edge inference via ONNX Runtime\n3. Next.js analytics dashboard\n4. Final pitch slide deck"
-  );
+  const [teamName, setTeamName] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [githubRepoUrl, setGithubRepoUrl] = React.useState("");
+  const [ideaBoard, setIdeaBoard] = React.useState("");
 
   const [openSlots, setOpenSlots] = React.useState<
     Array<{ title: string; category: any; description: string }>
-  >([
-    {
-      title: "Need 1 ML / Computer Vision Specialist",
-      category: "ml_ai",
-      description: "Experience with YOLO / OpenCV and PyTorch model quantization.",
-    },
-    {
-      title: "Need 1 Pitch / Demo Presenter",
-      category: "pitching",
-      description: "Lead the 3-minute jury pitch and slide deck narrative.",
-    },
-  ]);
+  >([]);
 
   const [newSlotTitle, setNewSlotTitle] = React.useState("");
   const [newSlotCategory, setNewSlotCategory] = React.useState("frontend");
   const [newSlotDesc, setNewSlotDesc] = React.useState("");
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+
+  // Load the published events so the picker only offers real hackathons.
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const res = await fetch("/api/hackathons", { cache: "no-store" });
+        if (!res.ok) throw new Error("events unavailable");
+
+        const body = await res.json();
+        const list = body.hackathons ?? [];
+        if (cancelled) return;
+
+        setHackathons(list);
+        setHackathonId((current) => current || list[0]?.id || "");
+      } catch {
+        if (!cancelled) {
+          setErrorMessage("The event list could not be loaded. Please try again.");
+        }
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleAddSlot = () => {
     if (!newSlotTitle.trim()) return;
@@ -68,20 +85,48 @@ function NewTeamForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
+
+    if (!hackathonId) {
+      setErrorMessage("Select the hackathon this squad is for.");
+      return;
+    }
+
+    if (teamName.trim().length < 3) {
+      setErrorMessage("Give the squad a name of at least 3 characters.");
+      return;
+    }
+
     setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          hackathonId,
+          name: teamName,
+          description: description || undefined,
+          githubRepoUrl: githubRepoUrl || undefined,
+          ideaBoard: ideaBoard || undefined,
+          openSlots,
+        }),
+      });
 
-    await TeamService.createTeam({
-      hackathonId,
-      leadId: "u-demo-1",
-      name: teamName,
-      description,
-      githubRepoUrl,
-      ideaBoard,
-      openSlots,
-    });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "The squad could not be created.");
+      }
 
-    setIsSubmitting(false);
-    router.push("/teams");
+      router.push("/teams");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "The squad could not be created. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -102,6 +147,12 @@ function NewTeamForm() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {errorMessage && (
+            <Alert status="error" title="Check the form">
+              {errorMessage}
+            </Alert>
+          )}
+
           <Card className="border-2 border-[#0A0A0A]">
             <CardHeader>
               <CardTitle>1. Team & Event Setup</CardTitle>
@@ -116,10 +167,15 @@ function NewTeamForm() {
                   onChange={(e) => setHackathonId(e.target.value)}
                   className="flex h-11 w-full rounded-[12px] border border-[#0A0A0A]/20 bg-[#FFFFFF] px-3.5 py-2 text-sm text-[#0A0A0A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A0A0A]"
                 >
-                  <option value="20000000-0000-0000-0000-000000000001">Smart India Hackathon 2026 (Hyderabad & Nodal)</option>
-                  <option value="20000000-0000-0000-0000-000000000002">HackHyderabad 2026 (T-Hub)</option>
-                  <option value="20000000-0000-0000-0000-000000000003">EthIndia 2026 (Hybrid)</option>
-                  <option value="20000000-0000-0000-0000-000000000004">Google Solution Challenge 2026</option>
+                  {hackathons.length === 0 && (
+                    <option value="">No published events</option>
+                  )}
+                  {hackathons.map((hackathon) => (
+                    <option key={hackathon.id} value={hackathon.id}>
+                      {hackathon.name}
+                      {hackathon.city_name ? ` (${hackathon.city_name})` : ""}
+                    </option>
+                  ))}
                 </select>
               </div>
 

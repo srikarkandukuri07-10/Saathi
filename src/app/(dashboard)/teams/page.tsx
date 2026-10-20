@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
-import { TeamService } from "@/lib/services/team";
 import { APP_CONFIG } from "@/config/site";
 import type { Team } from "@/types/models";
 import {
@@ -25,25 +24,50 @@ export default function TeamsPage() {
   const [teams, setTeams] = React.useState<Team[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [lockNotice, setLockNotice] = React.useState<string | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    let cancelled = false;
+
     async function load() {
-      const data = await TeamService.getTeamsForHackathon("20000000-0000-0000-0000-000000000001");
-      setTeams(data);
-      setLoading(false);
+      try {
+        const res = await fetch("/api/teams", { cache: "no-store" });
+        if (!res.ok) throw new Error("teams unavailable");
+
+        const body = await res.json();
+        if (!cancelled) setTeams(body.teams ?? []);
+      } catch {
+        if (!cancelled) {
+          setTeams([]);
+          setLoadError("The squads could not be loaded. Please try again.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
+
     load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleConfirmLock = async (teamId: string) => {
-    const res = await TeamService.confirmLock(teamId, "u-demo-1");
-    if (res.team) {
-      setTeams(teams.map((t) => (t.id === teamId ? res.team! : t)));
-      setLockNotice(
-        res.allLocked
-          ? "ðŸŽ‰ All members confirmed! Team is now LOCKED for Smart India Hackathon (+10 Reliability awarded)."
-          : "Your individual commitment confirmed! Waiting for remaining teammates to lock in."
-      );
+    try {
+      const res = await fetch(`/api/teams/${teamId}/lock`, { method: "POST" });
+      if (!res.ok) throw new Error("lock failed");
+
+      const body = await res.json();
+      if (body.team) {
+        setTeams(teams.map((t) => (t.id === teamId ? body.team : t)));
+        setLockNotice(
+          body.allLocked
+            ? "All members confirmed! The team is now LOCKED (+10 Reliability awarded to every confirmed member)."
+            : "Your individual commitment confirmed! Waiting for the remaining teammates to lock in."
+        );
+      }
+    } catch {
+      setLoadError("Your commitment could not be saved. Please try again.");
     }
   };
 
@@ -78,11 +102,34 @@ export default function TeamsPage() {
           </Alert>
         )}
 
+        {loadError && (
+          <Alert status="error" title="Something went wrong">
+            {loadError}
+          </Alert>
+        )}
+
         {/* Team Workspaces Feed */}
         {loading ? (
           <div className="text-center py-20 text-xs font-semibold text-[#0A0A0A]/60">
             Loading team squads...
           </div>
+        ) : teams.length === 0 ? (
+          <Card className="border-2 border-[#0A0A0A] border-dashed p-10 text-center">
+            <CardContent>
+              <h3 className="text-lg font-bold">No squads yet</h3>
+              <p className="text-xs text-[#0A0A0A]/70 mt-2 max-w-md mx-auto leading-relaxed">
+                Nobody has published open role slots yet. Create the first squad and
+                let the matching engine find the teammates you are missing.
+              </p>
+              <div className="mt-5">
+                <Link href="/teams/new">
+                  <Button variant="primary" size="sm" className="font-bold">
+                    <Plus className="h-3.5 w-3.5 mr-1.5" /> Create the first squad
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         ) : (
           <div className="space-y-6">
             {teams.map((team) => (
@@ -111,7 +158,11 @@ export default function TeamsPage() {
                       {team.name}
                     </h2>
                     <p className="text-xs font-medium text-[#0A0A0A]/70 mt-1">
-                      Lead: <strong>{team.lead_profile?.name || "Aditya"}</strong> &bull; Reliability: {team.lead_profile?.reliability_score || 95}/100
+                      Lead:{" "}
+                      <strong>{team.lead_profile?.name ?? "Team lead"}</strong>
+                      {team.lead_profile?.reliability_score
+                        ? ` • Reliability: ${team.lead_profile.reliability_score}/100`
+                        : ""}
                     </p>
                   </div>
 

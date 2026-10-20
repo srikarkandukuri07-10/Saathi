@@ -25,13 +25,12 @@ function LoginForm() {
   const [magicLoading, setMagicLoading] = useState(false)
   const [oauthLoading, setOauthLoading] = useState<'github' | 'google' | null>(null)
 
-  // Redirect if already authenticated (demo mode stays on the sign-in screen
-  // so the demo entry point is visible).
+  // Redirect if already authenticated
   useEffect(() => {
-    if (!loading && isAuthenticated && !isDemo) {
+    if (!loading && isAuthenticated) {
       window.location.href = next
     }
-  }, [isAuthenticated, loading, next, isDemo])
+  }, [isAuthenticated, loading, next])
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault()
     if (!email.trim()) return
@@ -102,16 +101,19 @@ function LoginForm() {
               </div>
             )}
 
-            {/* Demo mode notice */}
+            {/* Missing configuration notice */}
             {isDemo && (
               <div className="flex items-start gap-2 p-3 border border-[#B8F2C9]/40 bg-[#B8F2C9]/10">
                 <AlertCircle className="h-4 w-4 text-[#B8F2C9] mt-0.5 flex-shrink-0" />
                 <div>
-                  <p className="text-white text-sm font-medium">Demo mode</p>
+                  <p className="text-white text-sm font-medium">
+                    Supabase is not configured
+                  </p>
                   <p className="text-white/60 text-xs mt-0.5">
-                    No Supabase credentials are configured, so sign-in is simulated. Set
-                    NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to enable real
-                    OAuth accounts. Matches are served from the seeded Hyderabad chapter.
+                    Set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY and
+                    SUPABASE_SERVICE_ROLE_KEY in .env.local, then apply
+                    supabase/apply-all.sql. No account is created and no sample data
+                    is shown while the database is unreachable.
                   </p>
                 </div>
               </div>

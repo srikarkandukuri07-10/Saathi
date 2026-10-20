@@ -3,75 +3,66 @@
 import * as React from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Alert } from "@/components/ui/alert";
 import { APP_CONFIG } from "@/config/site";
 import {
   Trophy,
-  Award,
-  Users,
   ExternalLink,
   Sparkles,
   Share2,
   RotateCw,
-  CheckCircle2,
 } from "lucide-react";
 
-interface WinningTeam {
+interface HallOfFameEntry {
   id: string;
-  hackathonName: string;
-  hackathonYear: number;
-  teamName: string;
+  builderName: string;
+  college?: string;
+  eventName: string;
+  year: number;
   result: string;
-  prizeWon: string;
-  members: Array<{ name: string; college: string; role: string }>;
-  projectTitle: string;
-  projectDescription: string;
-  proofUrl: string;
+  proofUrl?: string;
 }
 
-const winningTeams: WinningTeam[] = [
-  {
-    id: "win-1",
-    hackathonName: "Smart India Hackathon 2025",
-    hackathonYear: 2025,
-    teamName: "Team NeuralGrid",
-    result: "1st Place Winner",
-    prizeWon: "₹1,00,000",
-    members: [
-      { name: "Aditya Narang", college: "IIIT Hyderabad", role: "Full-Stack Lead" },
-      { name: "Sneha Reddy", college: "CBIT", role: "ML Engineer" },
-      { name: "Vikram Chandra", college: "VNR VJIET", role: "IoT Hardware" },
-      { name: "Pooja Varma", college: "BITS Pilani", role: "UI/UX & Pitch" },
-    ],
-    projectTitle: "AI Grid Load Optimization for Smart Cities",
-    projectDescription: "Realtime transformer-based power surge prediction and autonomous feeder dispatch deployed on edge microcontrollers.",
-    proofUrl: "https://devpost.com/software/neuralgrid-sih",
-  },
-  {
-    id: "win-2",
-    hackathonName: "HackHyderabad 2025",
-    hackathonYear: 2025,
-    teamName: "CipherVault",
-    result: "Grand Prize Winners",
-    prizeWon: "₹3,00,000",
-    members: [
-      { name: "Kunal Shah", college: "IIT Hyderabad", role: "ZK Cryptography" },
-      { name: "Tanmay B", college: "Chaitanya Bharathi", role: "Rust Backend" },
-      { name: "Rhea Sen", college: "Vasavi College", role: "Frontend" },
-    ],
-    projectTitle: "Zero-Knowledge Biometric Identity Bridge",
-    projectDescription: "Privacy-preserving student credential verification using zk-SNARKs and browser WASM execution.",
-    proofUrl: "https://devfolio.co/submissions/ciphervault",
-  },
-];
-
 export default function HallOfFamePage() {
+  const [entries, setEntries] = React.useState<HallOfFameEntry[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [shareNotice, setShareNotice] = React.useState<string | null>(null);
 
-  const handleShareCard = (teamName: string) => {
-    navigator.clipboard.writeText(`https://hackpact.dev/hall-of-fame#${teamName.toLowerCase().replace(/\s+/g, "-")}`);
-    setShareNotice(`Victory card link for "${teamName}" copied to clipboard!`);
+  // The hall of fame is built from verified wins recorded on the platform.
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const res = await fetch("/api/hall-of-fame", { cache: "no-store" });
+        if (!res.ok) throw new Error("hall of fame unavailable");
+
+        const body = await res.json();
+        if (!cancelled) setEntries(body.entries ?? []);
+      } catch {
+        if (!cancelled) {
+          setEntries([]);
+          setLoadError("The hall of fame could not be loaded.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleShareCard = (builderName: string) => {
+    navigator.clipboard.writeText(
+      `https://hackpact.dev/hall-of-fame#${builderName.toLowerCase().replace(/\s+/g, "-")}`
+    );
+    setShareNotice(`Victory card link for "${builderName}" copied to clipboard!`);
     setTimeout(() => setShareNotice(null), 3000);
   };
 
@@ -89,13 +80,14 @@ export default function HallOfFamePage() {
               Hall of Fame
             </h1>
             <p className="mt-2 text-sm sm:text-base text-[#0A0A0A]/70 max-w-2xl leading-relaxed">
-              Teams formed on {APP_CONFIG.name} that went on to dominate external hackathons. Proof that complementary skills and high commitment win competitions.
+              Builders on {APP_CONFIG.name} whose wins were verified by an admin.
+              Proof that complementary skills and high commitment win competitions.
             </p>
           </div>
 
           <Link href="/matches">
             <Button variant="primary" size="sm" className="font-bold shadow-[2px_2px_0px_#0A0A0A]">
-              <Sparkles className="h-4 w-4 mr-1.5" /> Find Your Winning Team
+              <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Find Your Winning Team
             </Button>
           </Link>
         </div>
@@ -106,93 +98,93 @@ export default function HallOfFamePage() {
           </div>
         )}
 
+        {loadError && (
+          <Alert status="error" title="Could not load">
+            {loadError}
+          </Alert>
+        )}
+
         {/* Victory Cards Feed */}
-        <div className="space-y-8">
-          {winningTeams.map((team) => (
-            <Card
-              key={team.id}
-              className="border-2 border-[#0A0A0A] p-6 sm:p-8 shadow-[6px_6px_0px_#0A0A0A] space-y-6"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-[#0A0A0A]/10">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Badge variant="green" size="sm">
-                      <Trophy className="h-3 w-3 inline mr-1" /> {team.result}
-                    </Badge>
-                    <span className="text-xs font-bold text-[#0A0A0A]">
-                      {team.hackathonName} ({team.hackathonYear})
-                    </span>
-                  </div>
-                  <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-                    {team.teamName}
-                  </h2>
-                  <p className="text-sm font-bold text-[#0A0A0A] mt-1">
-                    Prize Won: <span className="bg-[#B8F2C9] px-2 py-0.5 rounded border border-[#0A0A0A]">{team.prizeWon}</span>
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <a href={team.proofUrl} target="_blank" rel="noreferrer">
-                    <Button variant="outline" size="sm">
-                      Verifiable Proof <ExternalLink className="h-3.5 w-3.5 ml-1" />
-                    </Button>
-                  </a>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => handleShareCard(team.teamName)}
-                  >
-                    <Share2 className="h-3.5 w-3.5 mr-1" /> Share Card
-                  </Button>
-                </div>
-              </div>
-
-              {/* Project Abstract */}
-              <div className="p-4 rounded-[14px] border border-[#0A0A0A]/15 bg-[#0A0A0A]/[0.02]">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#0A0A0A] block mb-1">
-                  Winning Project: {team.projectTitle}
-                </span>
-                <p className="text-xs sm:text-sm text-[#0A0A0A]/80 leading-relaxed">
-                  {team.projectDescription}
-                </p>
-              </div>
-
-              {/* Roster & "Team Up Again" Mechanic */}
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-[#0A0A0A]/60 block mb-3">
-                  Teammates Matched on {APP_CONFIG.name}:
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                  {team.members.map((member, idx) => (
-                    <div
-                      key={idx}
-                      className="p-3 rounded-[12px] border border-[#0A0A0A] bg-[#FFFFFF] shadow-sm flex flex-col justify-between"
-                    >
-                      <div>
-                        <span className="font-bold text-xs text-[#0A0A0A] block">{member.name}</span>
-                        <span className="text-[10px] text-[#0A0A0A]/60">{member.college}</span>
-                      </div>
-                      <Badge variant="subtle" size="sm" className="mt-2 w-fit">
-                        {member.role}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-[#0A0A0A]/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                <span className="text-[#0A0A0A]/70">
-                  Formed and locked on {APP_CONFIG.name} with 100% peer rating.
-                </span>
+        {loading ? (
+          <div className="text-center py-20 text-xs font-semibold text-[#0A0A0A]/60">
+            Loading verified wins...
+          </div>
+        ) : entries.length === 0 ? (
+          <Card className="border-2 border-[#0A0A0A] border-dashed p-10 text-center">
+            <CardContent>
+              <h3 className="text-lg font-bold">No verified wins yet</h3>
+              <p className="text-xs text-[#0A0A0A]/70 mt-2 max-w-md mx-auto leading-relaxed">
+                Winners appear here once an admin verifies the event, the result and
+                the proof link recorded on the profile.
+              </p>
+              <div className="mt-5">
                 <Link href="/matches">
-                  <Button variant="primary" size="sm" className="font-bold shadow-[2px_2px_0px_#0A0A0A]">
-                    <RotateCw className="h-3.5 w-3.5 mr-1" /> Team Up for Next Hackathon
+                  <Button variant="primary" size="sm" className="font-bold">
+                    <RotateCw className="h-3.5 w-3.5 mr-1" /> Find a winning squad
                   </Button>
                 </Link>
               </div>
-            </Card>
-          ))}
-        </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-8">
+            {entries.map((entry) => (
+              <Card
+                key={entry.id}
+                className="border-2 border-[#0A0A0A] p-6 sm:p-8 shadow-[6px_6px_0px_#0A0A0A] space-y-6"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-[#0A0A0A]/10">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge variant="green" size="sm">
+                        <Trophy className="h-3 w-3 inline mr-1" /> {entry.result}
+                      </Badge>
+                      <span className="text-xs font-bold text-[#0A0A0A]">
+                        {entry.eventName} ({entry.year})
+                      </span>
+                    </div>
+                    <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+                      {entry.builderName}
+                    </h2>
+                    {entry.college && (
+                      <p className="text-sm font-semibold text-[#0A0A0A]/70 mt-1">
+                        {entry.college}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {entry.proofUrl && (
+                      <a href={entry.proofUrl} target="_blank" rel="noreferrer">
+                        <Button variant="outline" size="sm">
+                          Verifiable Proof <ExternalLink className="h-3.5 w-3.5 ml-1" />
+                        </Button>
+                      </a>
+                    )}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleShareCard(entry.builderName)}
+                    >
+                      <Share2 className="h-3.5 w-3.5 mr-1" /> Share Card
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-[#0A0A0A]/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                  <span className="text-[#0A0A0A]/70">
+                    Verified result recorded on {APP_CONFIG.name}.
+                  </span>
+                  <Link href="/matches">
+                    <Button variant="primary" size="sm" className="font-bold shadow-[2px_2px_0px_#0A0A0A]">
+                      <RotateCw className="h-3.5 w-3.5 mr-1" /> Team Up for Next Hackathon
+                    </Button>
+                  </Link>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -71,12 +71,16 @@ d:/Saathi
 │   │   │   └── admin/             # Concierge match, verification queue, metrics
 │   │   ├── (legal)/               # India DPDP, Terms, Privacy Policy
 │   │   ├── api/                   # REST endpoints, health check, cron jobs
-│   │   │   ├── health/            # Service status probe
+│   │   │   ├── health/            # Service status with a live database probe
+│   │   │   ├── hackathons/        # Public directory and "I'm going" state
 │   │   │   ├── matches/           # GET: ranked match feed for the viewer
 │   │   │   ├── match-requests/    # GET/POST/PATCH: mutual-accept shield
 │   │   │   ├── matching/          # POST: precompute job (cron, CRON_SECRET)
-│   │   │   ├── notifications/     # POST/DELETE: push subscription, push job
-│   │   │   ├── profile/           # POST: GitHub stats sync
+│   │   │   ├── teams/             # Squads, roster and the anti-ghosting lock
+│   │   │   ├── conversations/     # 1:1 chat threads and messages
+│   │   │   ├── profile/           # Own profile, skills, projects, history
+│   │   │   ├── notifications/     # Push subscription and the push delivery job
+│   │   │   ├── admin/             # Verification queue, reports, CSV import
 │   │   │   └── user/              # DPDP data export and account deletion
 │   │   ├── design/                # Living design system token style guide
 │   │   ├── layout.tsx             # Root layout with responsive bottom navigation
@@ -93,11 +97,11 @@ d:/Saathi
 │   ├── lib/
 │   │   ├── supabase/              # Typed client, server SSR, admin client
 │   │   ├── redis/                 # Rate limiter and cache helpers
+│   │   ├── data/                  # Server-side data access (RLS enforced reads)
 │   │   ├── matching/              # Scorer, candidate generator, geo parsing, feed
-│   │   ├── services/              # Pure domain services (no React dependencies)
 │   │   ├── notifications/         # Web Push sender (VAPID)
 │   │   ├── validations/           # Zod schemas for forms and API payloads
-│   │   └── utils/                 # Formatting, geo distance, cn helper
+│   │   └── utils/                 # Formatting, geo distance, CSV parsing, cn helper
 │   ├── types/
 │   │   ├── database.ts            # Generated/typed Supabase database schema
 │   │   └── models.ts              # Domain entities

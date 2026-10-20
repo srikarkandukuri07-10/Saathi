@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { SUPABASE_URL } from "@/lib/supabase/config";
 
 /**
  * Service Role Admin Supabase client.
@@ -6,10 +7,15 @@ import { createClient } from "@supabase/supabase-js";
  * NEVER expose this to the browser tier!
  */
 export function createAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://mock.supabase.co";
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "mock-service-role-key";
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  return createClient(supabaseUrl, serviceRoleKey, {
+  if (!SUPABASE_URL || !serviceRoleKey) {
+    throw new Error(
+      "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."
+    );
+  }
+
+  return createClient(SUPABASE_URL, serviceRoleKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,

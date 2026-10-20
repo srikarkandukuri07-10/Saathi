@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { HackathonService } from "@/lib/services/hackathon";
+import { Alert } from "@/components/ui/alert";
 import type { Hackathon } from "@/types/models";
 import {
   Calendar,
@@ -24,28 +24,63 @@ export default function HackathonsDirectoryPage() {
   const [modeFilter, setModeFilter] = React.useState<string>("all");
   const [searchQuery, setSearchQuery] = React.useState<string>("");
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    let cancelled = false;
+
     async function load() {
-      const data = await HackathonService.getHackathons({
-        mode: modeFilter,
-        search: searchQuery,
-      });
-      setHackathons(data);
-      setLoading(false);
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (modeFilter !== "all") params.set("mode", modeFilter);
+        if (searchQuery.trim()) params.set("search", searchQuery.trim());
+
+        const res = await fetch(`/api/hackathons?${params.toString()}`, {
+          cache: "no-store",
+        });
+
+        if (!res.ok) throw new Error("directory unavailable");
+
+        const body = await res.json();
+        if (!cancelled) {
+          setHackathons(body.hackathons ?? []);
+        }
+      } catch {
+        if (!cancelled) {
+          setHackathons([]);
+          setLoadError("The directory could not be loaded. Please try again.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
+
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [modeFilter, searchQuery]);
 
-  const handleToggleGoing = async (hackathonId: string) => {
-    const res = await HackathonService.toggleGoing(hackathonId, "user_me");
-    setHackathons(
-      hackathons.map((h) =>
-        h.id === hackathonId
-          ? { ...h, is_user_going: res.isGoing, participant_count: res.count }
-          : h
-      )
-    );
+  const handleToggleGoing = async (hackathon: Hackathon) => {
+    try {
+      const res = await fetch(`/api/hackathons/${hackathon.slug}`, {
+        method: "POST",
+      });
+
+      if (!res.ok) throw new Error("could not update participation");
+
+      const body = await res.json();
+      setHackathons(
+        hackathons.map((h) =>
+          h.id === hackathon.id
+            ? { ...h, is_user_going: body.isGoing, participant_count: body.count }
+            : h
+        )
+      );
+    } catch {
+      setLoadError("Your participation could not be saved. Please try again.");
+    }
   };
 
   return (
@@ -111,6 +146,12 @@ export default function HackathonsDirectoryPage() {
         </div>
 
         {/* Hackathon Cards Grid */}
+        {loadError && (
+          <Alert status="error" title="Could not load the directory">
+            {loadError}
+          </Alert>
+        )}
+
         {loading ? (
           <div className="text-center py-20 text-xs font-semibold text-[#0A0A0A]/60">
             Filtering directory...
@@ -175,7 +216,7 @@ export default function HackathonsDirectoryPage() {
                     <Button
                       variant={h.is_user_going ? "primary" : "secondary"}
                       size="sm"
-                      onClick={() => handleToggleGoing(h.id)}
+                      onClick={() => handleToggleGoing(h)}
                       className="font-bold"
                     >
                       {h.is_user_going ? (

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { isDemoMode } from '@/lib/supabase/config'
+import { isSupabaseConfigured } from '@/lib/supabase/config'
 import type { User, Session } from '@supabase/supabase-js'
 
 interface AuthState {
@@ -11,36 +11,14 @@ interface AuthState {
   session: Session | null
   loading: boolean
   isAuthenticated: boolean
-  /** True when the app runs on placeholder credentials (no real account). */
+  /** True when Supabase is not configured, so no real account can exist. */
   isDemo: boolean
 }
 
 /**
- * Identity used while the app runs on placeholder Supabase credentials.
- * It is explicitly a demo principal: it unlocks the UI, it is not an account.
- */
-const DEMO_USER: User = {
-  id: '00000000-0000-0000-0000-000000000000',
-  aud: 'authenticated',
-  role: 'authenticated',
-  email: 'demo@hackpact.dev',
-  email_confirmed_at: undefined,
-  phone: '',
-  confirmed_at: undefined,
-  last_sign_in_at: undefined,
-  role_name: undefined,
-  created_at: undefined,
-  updated_at: undefined,
-  app_metadata: {},
-  user_metadata: { full_name: 'Demo Builder', name: 'Demo Builder' },
-  identities: [],
-  is_anonymous: false,
-} as unknown as User
-
-/**
  * Client-side auth state hook.
  * Subscribes to Supabase auth state changes for reactive re-renders.
- * Falls back gracefully when Supabase is not configured (dev mode).
+ * There is no fake identity: without Supabase the user simply stays signed out.
  */
 export function useAuth(): AuthState & {
   signOut: () => Promise<void>
@@ -52,11 +30,11 @@ export function useAuth(): AuthState & {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
-  const demo = isDemoMode()
+  const demo = !isSupabaseConfigured()
 
   useEffect(() => {
     if (demo) {
-      setUser(DEMO_USER)
+      setUser(null)
       setSession(null)
       setLoading(false)
       return
@@ -67,7 +45,7 @@ export function useAuth(): AuthState & {
     try {
       supabase = createClient()
     } catch {
-      // Supabase not configured — dev mode
+      // Supabase not configured — stay signed out
       setLoading(false)
       return
     }
@@ -100,14 +78,14 @@ export function useAuth(): AuthState & {
         // Ignore
       }
     }
-    setUser(demo ? DEMO_USER : null)
+    setUser(null)
     setSession(null)
     router.push('/')
   }, [router, demo])
 
   const signInWithGitHub = useCallback(async (next = '/matches') => {
     if (demo) {
-      router.push(next)
+      router.push('/login?error=supabase_not_configured')
       return
     }
     const supabase = createClient()
@@ -122,7 +100,7 @@ export function useAuth(): AuthState & {
 
   const signInWithGoogle = useCallback(async (next = '/matches') => {
     if (demo) {
-      router.push(next)
+      router.push('/login?error=supabase_not_configured')
       return
     }
     const supabase = createClient()
@@ -136,8 +114,7 @@ export function useAuth(): AuthState & {
 
   const signInWithMagicLink = useCallback(async (email: string) => {
     if (demo) {
-      router.push('/matches')
-      return {}
+      return { error: 'Supabase is not configured, so no email can be sent.' }
     }
     try {
       const supabase = createClient()
@@ -150,15 +127,15 @@ export function useAuth(): AuthState & {
       if (error) return { error: error.message }
       return {}
     } catch {
-      return { error: 'Supabase not configured. Using demo mode.' }
+      return { error: 'Supabase is not reachable. Please try again.' }
     }
-  }, [demo, router])
+  }, [demo])
 
   return {
     user,
     session,
     loading,
-    isAuthenticated: demo ? true : !!user,
+    isAuthenticated: !!user,
     isDemo: demo,
     signOut,
     signInWithGitHub,

@@ -159,10 +159,11 @@ d:/Saathi
 │   ├── components/            # UI components (Button, Card, Input, Progress, Alert)
 │   ├── config/site.ts         # Single Saathi product configuration constant
 │   ├── lib/
-│   │   ├── matching/          # Scorer, candidate generator, geo parsing, feed
-│   │   ├── notifications/     # Web Push sender (VAPID)
-│   │   ├── services/          # Pure domain services (Profile, Team, Hackathon, Chat)
-│   │   └── supabase/          # Client, SSR Server, and Admin Service Role clients
+│   │   ├── data/               # Server-side data access (Supabase, RLS enforced)
+│   │   ├── matching/           # Scorer, candidate generator, geo parsing, feed
+│   │   ├── notifications/      # Web Push sender (VAPID)
+│   │   ├── supabase/           # Client, SSR Server, Admin Service Role clients
+│   │   └── utils/              # Formatting, geo distance, CSV parsing, cn helper
 │   └── types/models.ts        # Complete domain interfaces
 ├── supabase/migrations/       # Postgres DDL migrations with PostGIS and strict RLS
 └── tests/
@@ -173,15 +174,53 @@ d:/Saathi
 
 ---
 
+## 🗄️ No Sample Data
+
+The application contains **no mock, sample or fabricated content**. Every
+surface reads from Postgres through the caller's session, so Row Level
+Security decides what is visible:
+
+- There is no seeded candidate pool, no in-memory conversation store and no
+  hardcoded event list. A table that is empty renders an honest empty state.
+- The counters on the landing page and the waitlist are live `COUNT` queries.
+- Protected routes stay closed without a real session; there is no demo
+  identity that unlocks the UI.
+- The Supabase clients refuse to start when the credentials are missing
+  instead of silently pointing at a placeholder host.
+
+The only rows in the database are the reference data a product needs to
+function: **cities**, the **skill catalog** and the **published external
+hackathons** (see `supabase/migrations/20261020000003_seed_data.sql`).
+
+---
+
 ## 🔌 API Reference
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/api/health` | No | Service status and active configuration. |
+| GET | `/api/health` | No | Live service status, including a real probe of the database and PostGIS. |
+| GET | `/api/stats` | No | Platform counters (hackathons, builders, squads, chapters) counted from the database. |
+| GET | `/api/hackathons` | No | The published external hackathon directory with filters. |
+| GET/POST | `/api/hackathons/[slug]` | No / Yes | A single event, and toggling "I'm going" for the signed-in user. |
+| GET | `/api/skills` | No | The structured skill catalog used by the onboarding picker. |
+| GET/POST | `/api/waitlist` | No | Live cold-start progress, and joining a city waitlist. |
+| GET | `/api/hall-of-fame` | No | Verified wins recorded by builders. |
 | GET | `/api/matches` | Yes | Ranked "Why you match" feed for the viewer. `403` while the 80% completeness gate is closed. |
 | GET/POST/PATCH | `/api/match-requests` | Yes | List, send, and answer teammate requests. Accepting unlocks the 1:1 chat. |
-| POST | `/api/matching/precompute` | `CRON_SECRET` | Scores every eligible pair per published hackathon into `match_candidates`. |
-| POST | DELETE | `/api/notifications/subscribe` | Yes | Manage the browser Web Push subscription. |
+| GET/POST | `/api/teams` | Yes | Squads for an event, and creating a squad. |
+| POST | `/api/teams/[id]/lock` | Yes | Confirms the commitment and locks the roster when everyone has confirmed. |
+| GET | `/api/conversations` | Yes | The signed-in user's mutual-accept conversations. |
+| GET/POST | `/api/conversations/[id]/messages` | Yes | Reads and sends messages in a conversation. |
+| GET/PATCH | `/api/profile` | Yes | The signed-in user's own profile. |
+| GET | `/api/profiles/[id]` | Yes | Another builder's public profile (no exact coordinates). |
+| GET/PUT | `/api/profile/skills` | Yes | Reads and replaces the profile skill set. |
+| GET/POST | `/api/profile/projects` | Yes | Showcase projects. |
+| GET/POST | `/api/profile/past-hackathons` | Yes | Competition history (new entries start as pending). |
+| GET/POST | `/api/notifications` | Yes | In-app notifications, and marking them read. |
+| POST | `/api/reports` | Yes | Files a safety report. |
+| POST | `/api/blocks` | Yes | Blocks a builder. |
+| GET/POST/PATCH | `/api/admin` | Admin | Verification queue, reports, moderation, CSV import, concierge introductions. |
+| POST | `/api/matching/precompute` | `CRON_SECRET` | Scores every eligible pair per published hackathon. |
 | POST | `/api/notifications/push` | `CRON_SECRET` | Delivers queued notifications through Web Push. |
 | POST | `/api/profile/sync-github` | Yes | Pulls public GitHub stats into `profiles.github_stats`. |
 | GET | `/api/user/export-data` | Yes | DPDP Act data export (JSON) of the caller's own data. |

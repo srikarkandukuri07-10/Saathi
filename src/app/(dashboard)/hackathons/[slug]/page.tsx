@@ -1,6 +1,10 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { HackathonService } from "@/lib/services/hackathon";
+import {
+  getHackathonBySlug,
+  listEventParticipants,
+} from "@/lib/data/hackathons";
+import { listTeams } from "@/lib/data/teams";
 import { APP_CONFIG } from "@/config/site";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -24,7 +28,7 @@ interface HackathonDetailPageProps {
 }
 
 export async function generateMetadata({ params }: HackathonDetailPageProps) {
-  const hackathon = await HackathonService.getHackathonBySlug(params.slug);
+  const hackathon = await getHackathonBySlug(params.slug, null);
   if (!hackathon) return { title: "Hackathon Not Found" };
   return {
     title: `${hackathon.name} | Teammates & Teams on ${APP_CONFIG.name}`,
@@ -33,65 +37,27 @@ export async function generateMetadata({ params }: HackathonDetailPageProps) {
 }
 
 export default async function HackathonDetailPage({ params }: HackathonDetailPageProps) {
-  const hackathon = await HackathonService.getHackathonBySlug(params.slug);
+  const hackathon = await getHackathonBySlug(params.slug, null);
   if (!hackathon) {
     notFound();
   }
 
-  // Pre-seeded teams and participants for this event
-  const openTeams = [
-    {
-      id: "t-1",
-      name: "Autonomous Agents Lab",
-      lead: "Aditya Narang (IIIT Hyderabad)",
-      openSlots: [
-        { id: "s-1", title: "Need 1 ML / AI Engineer", category: "ml_ai" },
-        { id: "s-2", title: "Need 1 Pitch / Product Lead", category: "pitching" },
-      ],
-      membersCount: 2,
-      maxSize: hackathon.max_team_size,
-    },
-    {
-      id: "t-2",
-      name: "Hyderabad Smart Grid",
-      lead: "Sneha Reddy (CBIT)",
-      openSlots: [
-        { id: "s-3", title: "Need 1 Backend & PostGIS Dev", category: "backend" },
-      ],
-      membersCount: 3,
-      maxSize: hackathon.max_team_size,
-    },
-  ];
+  // Real squads and real registrations for this event.
+  const teams = await listTeams(hackathon.id);
+  const attendeesSeekingTeams = await listEventParticipants(hackathon.id);
 
-  const attendeesSeekingTeams = [
-    {
-      id: "u-1",
-      name: "Rohan Kulkarni",
-      college: "VNR VJIET",
-      role: "Frontend Engineer (Next.js)",
-      reliability: 92,
-      intensity: "Full Grind",
-      matchScore: 94,
-    },
-    {
-      id: "u-2",
-      name: "Divya Teja",
-      college: "BITS Pilani Hyderabad",
-      role: "AI & Computer Vision",
-      reliability: 88,
-      intensity: "Full Grind",
-      matchScore: 91,
-    },
-    {
-      id: "u-3",
-      name: "Karan Singhania",
-      college: "Osmania University",
-      role: "Hardware & IoT",
-      reliability: 85,
-      intensity: "Serious",
-      matchScore: 86,
-    },
-  ];
+  const openTeams = teams.map((team) => ({
+    id: team.id,
+    name: team.name,
+    lead: team.lead_profile?.name
+      ? `${team.lead_profile.name}${team.lead_profile.college ? ` (${team.lead_profile.college})` : ""}`
+      : "Team lead",
+    openSlots: team.open_slots
+      .filter((slot) => !slot.is_filled)
+      .map((slot) => ({ id: slot.id, title: slot.title, category: slot.category })),
+    membersCount: team.members.length,
+    maxSize: hackathon.max_team_size,
+  }));
 
   return (
     <div className="min-h-screen bg-[#FFFFFF] py-10 px-4 sm:px-6 lg:px-8 pb-24">
@@ -211,42 +177,62 @@ export default async function HackathonDetailPage({ params }: HackathonDetailPag
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {openTeams.map((team) => (
-              <Card key={team.id} className="border-2 border-[#0A0A0A] space-y-4 shadow-[3px_3px_0px_#0A0A0A]">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="font-bold text-base">{team.name}</h3>
-                    <p className="text-xs text-[#0A0A0A]/60">Lead: {team.lead}</p>
+          {openTeams.length === 0 ? (
+            <Card className="border-2 border-[#0A0A0A] border-dashed p-8 text-center">
+              <CardContent>
+                <p className="text-sm font-bold text-[#0A0A0A]">
+                  No squads yet for this event
+                </p>
+                <p className="text-xs text-[#0A0A0A]/60 mt-1">
+                  Be the first: publish open role slots and let the matching engine
+                  find the people you are missing.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {openTeams.map((team) => (
+                <Card key={team.id} className="border-2 border-[#0A0A0A] space-y-4 shadow-[3px_3px_0px_#0A0A0A]">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="font-bold text-base">{team.name}</h3>
+                      <p className="text-xs text-[#0A0A0A]/60">Lead: {team.lead}</p>
+                    </div>
+                    <Badge variant="subtle" size="sm">
+                      {team.membersCount}/{team.maxSize} Members
+                    </Badge>
                   </div>
-                  <Badge variant="subtle" size="sm">
-                    {team.membersCount}/{team.maxSize} Members
-                  </Badge>
-                </div>
 
-                <div className="space-y-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#0A0A0A]/60 block">
-                    Needed Skills:
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {team.openSlots.map((slot) => (
-                      <Badge key={slot.id} variant="green" size="sm">
-                        {slot.title}
-                      </Badge>
-                    ))}
+                  <div className="space-y-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#0A0A0A]/60 block">
+                      Needed Skills:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {team.openSlots.length === 0 ? (
+                        <span className="text-xs text-[#0A0A0A]/50">
+                          Roster is full.
+                        </span>
+                      ) : (
+                        team.openSlots.map((slot) => (
+                          <Badge key={slot.id} variant="green" size="sm">
+                            {slot.title}
+                          </Badge>
+                        ))
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                <div className="pt-2 border-t border-[#0A0A0A]/10 flex justify-end">
-                  <Link href={`/teams`}>
-                    <Button variant="secondary" size="sm">
-                      Apply for Slot &rarr;
-                    </Button>
-                  </Link>
-                </div>
-              </Card>
-            ))}
-          </div>
+                  <div className="pt-2 border-t border-[#0A0A0A]/10 flex justify-end">
+                    <Link href={`/teams`}>
+                      <Button variant="secondary" size="sm">
+                        Apply for Slot &rarr;
+                      </Button>
+                    </Link>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Attendees Seeking Teams */}
@@ -265,33 +251,49 @@ export default async function HackathonDetailPage({ params }: HackathonDetailPag
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {attendeesSeekingTeams.map((user) => (
-              <Card key={user.id} className="border-2 border-[#0A0A0A] flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <Badge variant="green" size="sm">
-                      {user.matchScore}% Match
-                    </Badge>
-                    <span className="text-xs font-bold tabular-nums">
-                      {user.reliability}/100 Trust
-                    </span>
+          {attendeesSeekingTeams.length === 0 ? (
+            <Card className="border-2 border-[#0A0A0A] border-dashed p-8 text-center">
+              <CardContent>
+                <p className="text-sm font-bold text-[#0A0A0A]">
+                  Nobody has registered for this event yet
+                </p>
+                <p className="text-xs text-[#0A0A0A]/60 mt-1">
+                  Builders who mark &ldquo;I&apos;m Going&rdquo; appear here and enter the
+                  matching pool.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {attendeesSeekingTeams.map((user) => (
+                <Card key={user.id} className="border-2 border-[#0A0A0A] flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <Badge variant="green" size="sm">
+                        {user.status === "has_team" ? "Has a team" : "Seeking a team"}
+                      </Badge>
+                      <span className="text-xs font-bold tabular-nums">
+                        {user.reliabilityScore}/100 Trust
+                      </span>
+                    </div>
+                    <h4 className="font-bold text-base">{user.name}</h4>
+                    <p className="text-xs text-[#0A0A0A]/60">{user.college}</p>
+                    <p className="text-xs font-medium text-[#0A0A0A] mt-2">
+                      {user.primarySkill ?? user.goals}
+                    </p>
                   </div>
-                  <h4 className="font-bold text-base">{user.name}</h4>
-                  <p className="text-xs text-[#0A0A0A]/60">{user.college}</p>
-                  <p className="text-xs font-medium text-[#0A0A0A] mt-2">{user.role}</p>
-                </div>
 
-                <div className="pt-3 border-t border-[#0A0A0A]/10 mt-3">
-                  <Link href={`/matches`}>
-                    <Button variant="secondary" size="sm" className="w-full">
-                      Request Teammate
-                    </Button>
-                  </Link>
-                </div>
-              </Card>
-            ))}
-          </div>
+                  <div className="pt-3 border-t border-[#0A0A0A]/10 mt-3">
+                    <Link href={`/p/${user.id}`}>
+                      <Button variant="secondary" size="sm" className="w-full">
+                        View Profile
+                      </Button>
+                    </Link>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { isDemoMode } from '@/lib/supabase/config'
+import { isSupabaseConfigured } from '@/lib/supabase/config'
 
 type CookieItem = { name: string; value: string; options?: Record<string, unknown> }
 
@@ -90,13 +90,16 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // ── Demo mode: no real Supabase credentials ───────────────────────────────
-  // The app is running on placeholder credentials. Keep every surface
-  // reachable so the product can be demonstrated end to end.
-  if (isDemoMode()) {
-    const response = NextResponse.next({ request })
-    response.headers.set('x-demo-mode', 'true')
-    return response
+  // ── Supabase not configured ───────────────────────────────────────────────
+  // Without real credentials no session can exist. Protected routes stay
+  // closed and the sign-in screen explains the missing configuration.
+  if (!isSupabaseConfigured()) {
+    if (isProtectedRoute(pathname)) {
+      const loginUrl = new URL('/login', request.url)
+      loginUrl.searchParams.set('error', 'supabase_not_configured')
+      return NextResponse.redirect(loginUrl)
+    }
+    return NextResponse.next()
   }
 
   // ── Session check via Supabase SSR ────────────────────────────────────────

@@ -7,7 +7,6 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Alert } from "@/components/ui/alert";
-import { WaitlistService } from "@/lib/services/waitlist";
 import { APP_CONFIG } from "@/config/site";
 import {
   Sparkles,
@@ -25,26 +24,51 @@ export default function WaitlistPage() {
   const [email, setEmail] = React.useState("");
   const [college, setCollege] = React.useState("");
   const [cityId, setCityId] = React.useState("c0000000-0000-0000-0000-000000000001");
-  const [cityName, setCityName] = React.useState("Hyderabad");
 
-  const [stats, setStats] = React.useState({
-    currentCount: 23,
-    targetCount: 50,
-    remaining: 27,
-    percentage: 46,
-    cityName: "Hyderabad",
-  });
+  const [cities, setCities] = React.useState<
+    Array<{ id: string; name: string; is_active: boolean; target_members: number }>
+  >([]);
+
+  const [stats, setStats] = React.useState<{
+    currentCount: number;
+    targetCount: number;
+    remaining: number;
+    percentage: number;
+    cityName: string;
+  } | null>(null);
 
   const [joinedLink, setJoinedLink] = React.useState<string | null>(null);
   const [copied, setCopied] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    let cancelled = false;
+
     async function load() {
-      const data = await WaitlistService.getCityWaitlistStats(cityId);
-      setStats(data);
+      try {
+        const res = await fetch(`/api/waitlist?cityId=${encodeURIComponent(cityId)}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error("waitlist unavailable");
+
+        const body = await res.json();
+        if (cancelled) return;
+
+        setStats(body.stats);
+        setCities(body.cities ?? []);
+      } catch {
+        if (!cancelled) {
+          setStats(null);
+          setLoadError("The waitlist progress could not be loaded.");
+        }
+      }
     }
+
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [cityId]);
 
   const handleJoin = async (e: React.FormEvent) => {
@@ -52,22 +76,41 @@ export default function WaitlistPage() {
     if (!name || !email) return;
 
     setIsSubmitting(true);
-    const res = await WaitlistService.joinWaitlist({
-      name,
-      email,
-      cityId,
-      cityName,
-      college,
-    });
+    setLoadError(null);
 
-    setIsSubmitting(false);
-    setJoinedLink(res.referralLink);
-    setStats((prev) => ({
-      ...prev,
-      currentCount: prev.currentCount + 1,
-      remaining: Math.max(0, prev.remaining - 1),
-      percentage: Math.round(((prev.currentCount + 1) / prev.targetCount) * 100),
-    }));
+    try {
+      const res = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, cityId, college: college || undefined }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Could not join the waitlist");
+      }
+
+      const body = await res.json();
+      setJoinedLink(body.referralLink);
+
+      // Refresh the counters from the server instead of guessing locally.
+      const statsRes = await fetch(
+        `/api/waitlist?cityId=${encodeURIComponent(cityId)}`,
+        { cache: "no-store" }
+      );
+      if (statsRes.ok) {
+        const statsBody = await statsRes.json();
+        setStats(statsBody.stats);
+      }
+    } catch (error) {
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : "Could not join the waitlist. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const copyLink = () => {
@@ -81,6 +124,18 @@ export default function WaitlistPage() {
   return (
     <div className="min-h-screen bg-[#FFFFFF] py-12 px-4 sm:px-6 lg:px-8 pb-24">
       <div className="mx-auto max-w-4xl space-y-10">
+        {loadError && (
+          <Alert status="error" title="Something went wrong">
+            {loadError}
+          </Alert>
+        )}
+
+        {!stats ? (
+          <div className="text-center py-20 text-sm font-semibold text-[#0A0A0A]/60">
+            Loading chapter progress...
+          </div>
+        ) : (
+          <>
         {/* Header */}
         <div className="text-center space-y-4 max-w-2xl mx-auto">
           <div className="inline-flex items-center gap-2 rounded-full border border-[#0A0A0A] bg-[#B8F2C9] px-3.5 py-1 text-xs font-bold text-[#0A0A0A] shadow-[2px_2px_0px_#0A0A0A]">
@@ -89,7 +144,7 @@ export default function WaitlistPage() {
           </div>
 
           <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight">
-            Hyderabad Chapter Waitlist
+            {stats.cityName} Chapter Waitlist
           </h1>
           <p className="text-sm sm:text-base text-[#0A0A0A]/70 leading-relaxed">
             We launch city by city to ensure every offline hackathon has high team density. Full matching pool unlocks at <strong>{stats.targetCount} verified builders</strong>.
@@ -116,7 +171,7 @@ export default function WaitlistPage() {
             <Progress value={stats.currentCount} max={stats.targetCount} showPercentage={true} />
             <div className="flex justify-between text-xs text-[#0A0A0A]/60 font-semibold">
               <span>0 Joined</span>
-              <span>50 Goal (Matching Unlocked)</span>
+              <span>{stats.targetCount} Goal (Matching Unlocked)</span>
             </div>
           </div>
 
@@ -144,10 +199,10 @@ export default function WaitlistPage() {
               <CheckCircle2 className="h-6 w-6 text-[#0A0A0A]" />
             </div>
             <h3 className="text-2xl font-extrabold tracking-tight">
-              You&apos;re in the Hyderabad Founding 50!
+              You&apos;re in the {stats.cityName} founding cohort!
             </h3>
             <p className="text-xs text-[#0A0A0A]/70 max-w-md mx-auto">
-              Share your referral link with college peers. Every peer who joins brings Hyderabad closer to unlocking matching.
+              Share your referral link with college peers. Every peer who joins brings {stats.cityName} closer to unlocking matching.
             </p>
 
             <div className="flex items-center justify-center gap-2 max-w-md mx-auto pt-2">
@@ -166,13 +221,33 @@ export default function WaitlistPage() {
         ) : (
           <Card className="border-2 border-[#0A0A0A] max-w-xl mx-auto shadow-[4px_4px_0px_#0A0A0A]">
             <CardHeader>
-              <CardTitle>Join the Hyderabad Waitlist</CardTitle>
+              <CardTitle>Join the {stats.cityName} Waitlist</CardTitle>
               <CardDescription>
-                Zero spam. You will be notified the instant 50 members join.
+                Zero spam. You will be notified the instant {stats.targetCount} members join.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleJoin} className="space-y-4">
+                {cities.length > 1 && (
+                  <div>
+                    <label className="text-sm font-semibold text-[#0A0A0A] block mb-1.5">
+                      City
+                    </label>
+                    <select
+                      value={cityId}
+                      onChange={(e) => setCityId(e.target.value)}
+                      className="flex h-11 w-full rounded-[12px] border border-[#0A0A0A]/20 bg-[#FFFFFF] px-3.5 py-2 text-sm text-[#0A0A0A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A0A0A]"
+                    >
+                      {cities.map((city) => (
+                        <option key={city.id} value={city.id}>
+                          {city.name}
+                          {city.is_active ? " (active chapter)" : " (waitlist)"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <Input
                   label="Full Name"
                   value={name}
@@ -202,11 +277,13 @@ export default function WaitlistPage() {
                   isLoading={isSubmitting}
                   className="w-full font-bold shadow-[2px_2px_0px_#0A0A0A]"
                 >
-                  Claim Hyderabad Spot & Get Referral Link <ArrowRight className="ml-2 h-4 w-4" />
+                  Claim {stats.cityName} Spot & Get Referral Link <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </form>
             </CardContent>
           </Card>
+        )}
+          </>
         )}
       </div>
     </div>

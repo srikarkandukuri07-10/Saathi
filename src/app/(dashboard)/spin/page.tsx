@@ -34,55 +34,10 @@ interface CompatibleCandidate {
   reliability: number;
 }
 
-const pool: CompatibleCandidate[] = [
-  {
-    id: "sp-1",
-    name: "Sneha Reddy",
-    college: "CBIT Hyderabad",
-    city: "Hyderabad (HITEC City)",
-    role: "Backend & LLM Agent Specialist",
-    skills: ["Python", "FastAPI", "PyTorch", "LLMs & Agents"],
-    score: 95,
-    reasons: [
-      "Complementary Stack: Solves your backend & AI modeling gap",
-      "Both marked Full 24h Grind intensity",
-      "Same metro area in Hyderabad (~4 km away)",
-    ],
-    reliability: 94,
-  },
-  {
-    id: "sp-2",
-    name: "Vikram Chandra",
-    college: "VNR VJIET",
-    city: "Hyderabad (Gachibowli)",
-    role: "Hardware & IoT Systems Architect",
-    skills: ["Arduino", "ESP32", "ROS2", "Robotics"],
-    score: 91,
-    reasons: [
-      "Complementary Hardware Depth for Smart Automation",
-      "Both aiming for 1st place in Smart India Hackathon",
-      "Verified GitHub repositories & prior finalist badge",
-    ],
-    reliability: 90,
-  },
-  {
-    id: "sp-3",
-    name: "Pooja Varma",
-    college: "BITS Pilani Hyderabad",
-    city: "Hyderabad (Shamirpet)",
-    role: "Product Designer & Demo Storyteller",
-    skills: ["Figma UI/UX", "Pitch Deck", "Prototyping", "User Research"],
-    score: 89,
-    reasons: [
-      "Key Gap Filled: Expert presentation & UI prototype lead",
-      "Fairness boost: Rising builder with strong portfolio",
-      "Verified BITS Pilani college credentials",
-    ],
-    reliability: 88,
-  },
-];
-
 export default function LuckySpinPage() {
+  const [pool, setPool] = React.useState<CompatibleCandidate[]>([]);
+  const [poolLoading, setPoolLoading] = React.useState(true);
+  const [poolError, setPoolError] = React.useState<string | null>(null);
   const [isSpinning, setIsSpinning] = React.useState(false);
   const [selectedCandidate, setSelectedCandidate] = React.useState<CompatibleCandidate | null>(null);
   const [spinCount, setSpinCount] = React.useState(0);
@@ -90,8 +45,60 @@ export default function LuckySpinPage() {
   const [introNote, setIntroNote] = React.useState("");
   const [requestSent, setRequestSent] = React.useState(false);
 
+  // The spin wheel draws from the live match feed, never from a fixed list.
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const res = await fetch("/api/matches", { cache: "no-store" });
+        if (!res.ok) throw new Error("match feed unavailable");
+
+        const body = await res.json();
+        if (cancelled) return;
+
+        const list: CompatibleCandidate[] = (body.matches ?? []).map(
+          (match: any) => ({
+            id: match.candidate_id,
+            name: match.candidate?.name ?? "Builder",
+            college: match.candidate?.college ?? "",
+            city: match.candidate?.city_name ?? "",
+            role:
+              (match.candidate?.skills ?? [])
+                .map((skill: any) => skill.skill_name)
+                .filter(Boolean)
+                .slice(0, 2)
+                .join(" & ") || "Builder",
+            skills: (match.candidate?.skills ?? []).map(
+              (skill: any) => skill.skill_name
+            ),
+            score: match.score,
+            reasons: match.reasons ?? [],
+            reliability: match.candidate?.reliability_score ?? 0,
+          })
+        );
+
+        setPool(list);
+      } catch {
+        if (!cancelled) {
+          setPool([]);
+          setPoolError(
+            "The compatible builder pool could not be loaded. Sign in and complete your profile to use the spin wheel."
+          );
+        }
+      } finally {
+        if (!cancelled) setPoolLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleSpin = () => {
-    if (isSpinning) return;
+    if (isSpinning || pool.length === 0) return;
     setIsSpinning(true);
     setSelectedCandidate(null);
     setRequestSent(false);
@@ -166,14 +173,21 @@ export default function LuckySpinPage() {
             <Button
               size="lg"
               onClick={handleSpin}
-              disabled={isSpinning}
+              disabled={isSpinning || poolLoading || pool.length === 0}
               className="w-full font-bold text-base shadow-[4px_4px_0px_#0A0A0A]"
             >
               <RotateCw className={`h-4 w-4 mr-2 ${isSpinning ? "animate-spin" : ""}`} />
-              {isSpinning ? "Filtering Compatible Pool..." : "Spin Mystery Teammate"}
+              {poolLoading
+                ? "Loading the compatible pool..."
+                : isSpinning
+                  ? "Filtering Compatible Pool..."
+                  : pool.length === 0
+                    ? "No compatible builders yet"
+                    : "Spin Mystery Teammate"}
             </Button>
             <p className="text-[11px] text-[#0A0A0A]/60 mt-2 font-medium">
-              Requires minimum 80% compatibility threshold &bull; Mutual accept shielded
+              {poolError ??
+                `Drawing from ${pool.length} compatible builder${pool.length === 1 ? "" : "s"} in your live match feed`}
             </p>
           </div>
         </div>

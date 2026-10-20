@@ -10,10 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Alert } from "@/components/ui/alert";
 import { APP_CONFIG } from "@/config/site";
-import { ProfileService } from "@/lib/services/profile";
 import { useAuth } from "@/hooks/use-auth";
 import { calculateProfileCompleteness } from "@/lib/utils";
-import type { Skill } from "@/types/models";
+import type { ProfileSkill, Skill } from "@/types/models";
 import {
   CheckCircle2,
   Lock,
@@ -36,56 +35,106 @@ interface SelectedSkill {
 export default function OnboardingPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const availableSkills = React.useMemo(() => ProfileService.getStructuredSkills(), []);
+
+  const [availableSkills, setAvailableSkills] = React.useState<Skill[]>([]);
+  const [cities, setCities] = React.useState<
+    Array<{ id: string; name: string; is_active: boolean }>
+  >([]);
 
   // Form states
-  const [name, setName] = React.useState("Varun Sharma");
-  const [college, setCollege] = React.useState("CBIT Hyderabad");
-  const [year, setYear] = React.useState<number>(3);
-  const [branch, setBranch] = React.useState("Artificial Intelligence & Data Science");
+  const [name, setName] = React.useState("");
+  const [college, setCollege] = React.useState("");
+  const [year, setYear] = React.useState<number>(0);
+  const [branch, setBranch] = React.useState("");
   const [cityId, setCityId] = React.useState("c0000000-0000-0000-0000-000000000001");
-  const [cityName, setCityName] = React.useState("Hyderabad");
-  const [area, setArea] = React.useState("Madhapur");
-  const [bio, setBio] = React.useState(
-    "Full-stack & AI builder. Looking to form a high-commitment 24h grind squad for Smart India Hackathon and HackHyderabad."
-  );
-  const [linkedinUrl, setLinkedinUrl] = React.useState("https://linkedin.com/in/varunsharma-dev");
-  const [githubUrl, setGithubUrl] = React.useState("https://github.com/varunsharma");
-  const [portfolioUrl, setPortfolioUrl] = React.useState("https://varun.dev");
+  const [cityName, setCityName] = React.useState("");
+  const [area, setArea] = React.useState("");
+  const [bio, setBio] = React.useState("");
+  const [linkedinUrl, setLinkedinUrl] = React.useState("");
+  const [githubUrl, setGithubUrl] = React.useState("");
+  const [portfolioUrl, setPortfolioUrl] = React.useState("");
 
-  const [goals, setGoals] = React.useState<"win" | "learn" | "balanced">("win");
-  const [intensity, setIntensity] = React.useState<"casual" | "serious" | "grind">("grind");
+  const [goals, setGoals] = React.useState<"win" | "learn" | "balanced">("balanced");
+  const [intensity, setIntensity] = React.useState<"casual" | "serious" | "grind">("serious");
   const [availability, setAvailability] = React.useState<"online_only" | "offline_city" | "willing_to_travel">("offline_city");
-  const [travelCities, setTravelCities] = React.useState<string[]>(["Hyderabad", "Bengaluru"]);
+  const [travelCities, setTravelCities] = React.useState<string[]>([]);
 
-  // Seed the picker from the catalog so the stored skill ids always match the
-  // seeded `skills` rows (profile_skills.skill_id is a foreign key).
-  const [selectedSkills, setSelectedSkills] = React.useState<SelectedSkill[]>(() => {
-    const seedByName: Record<string, { proficiency: number; isPrimary: boolean }> = {
-      "Next.js / React": { proficiency: 5, isPrimary: true },
-      "Python / FastAPI": { proficiency: 4, isPrimary: false },
-      "LLMs & AI Agents": { proficiency: 4, isPrimary: true },
-    };
-
-    return ProfileService.getStructuredSkills()
-      .filter((skill) => seedByName[skill.name])
-      .map((skill) => ({
-        skillId: skill.id,
-        skillName: skill.name,
-        category: skill.category,
-        proficiency: seedByName[skill.name].proficiency,
-        isPrimary: seedByName[skill.name].isPrimary,
-      }));
-  });
+  const [selectedSkills, setSelectedSkills] = React.useState<SelectedSkill[]>([]);
 
   const [customSkillInput, setCustomSkillInput] = React.useState("");
 
   // India DPDP & Age Consents
-  const [ageConsent, setAgeConsent] = React.useState(true);
-  const [privacyConsent, setPrivacyConsent] = React.useState(true);
+  const [ageConsent, setAgeConsent] = React.useState(false);
+  const [privacyConsent, setPrivacyConsent] = React.useState(false);
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+
+  // Load the skill catalog, the city list and the stored profile.
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const [skillsRes, waitlistRes, profileRes] = await Promise.all([
+          fetch("/api/skills", { cache: "no-store" }),
+          fetch("/api/waitlist", { cache: "no-store" }),
+          fetch("/api/profile", { cache: "no-store" }),
+        ]);
+
+        if (cancelled) return;
+
+        if (skillsRes.ok) {
+          const body = await skillsRes.json();
+          setAvailableSkills(body.skills ?? []);
+        }
+
+        if (waitlistRes.ok) {
+          const body = await waitlistRes.json();
+          setCities(body.cities ?? []);
+        }
+
+        if (profileRes.ok) {
+          const body = await profileRes.json();
+          const existing = body.profile;
+          if (existing) {
+            setName(existing.name ?? "");
+            setCollege(existing.college ?? "");
+            setYear(existing.year ?? 0);
+            setBranch(existing.branch ?? "");
+            setCityId(existing.city_id ?? "c0000000-0000-0000-0000-000000000001");
+            setCityName(existing.city_name ?? "");
+            setArea(existing.area ?? "");
+            setBio(existing.bio ?? "");
+            setLinkedinUrl(existing.linkedin_url ?? "");
+            setGithubUrl(existing.github_url ?? "");
+            setPortfolioUrl(existing.portfolio_url ?? "");
+            setGoals(existing.goals ?? "balanced");
+            setIntensity(existing.intensity ?? "serious");
+            setAvailability(existing.availability ?? "offline_city");
+            setSelectedSkills(
+              ((existing.skills ?? []) as ProfileSkill[]).map((skill) => ({
+                skillId: skill.skill_id,
+                skillName: skill.skill_name ?? "",
+                category: skill.category ?? "other",
+                proficiency: skill.proficiency,
+                isPrimary: skill.is_primary,
+              }))
+            );
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setErrorMessage("The form could not be prepared. Please refresh the page.");
+        }
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Dynamic profile completeness
   const completeness = React.useMemo(() => {
@@ -164,39 +213,56 @@ export default function OnboardingPage() {
     setIsSubmitting(true);
     try {
       // The profile row is keyed by the signed-in auth user id.
-      const profileId = user?.id ?? "user_me";
-
-      const result = await ProfileService.saveProfile(profileId, {
-        name,
-        college,
-        year,
-        branch,
-        cityId,
-        cityName,
-        area,
-        bio,
-        linkedinUrl,
-        githubUrl,
-        portfolioUrl,
-        goals,
-        intensity,
-        availability,
-        travelCities,
-        skills: selectedSkills,
-        ageConsentConfirmed: ageConsent,
-        privacyConsentConfirmed: privacyConsent,
+      const profileRes = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          college,
+          year: year || undefined,
+          branch,
+          cityId,
+          area,
+          bio,
+          linkedinUrl,
+          githubUrl,
+          portfolioUrl: portfolioUrl || undefined,
+          goals,
+          intensity,
+          availability,
+          travelCities,
+        }),
       });
 
-      if (!result.persisted && result.persistenceError) {
-        setErrorMessage(
-          `Your profile was saved locally but could not be written to the database: ${result.persistenceError}`
-        );
-        return;
+      if (!profileRes.ok) {
+        const body = await profileRes.json().catch(() => ({}));
+        throw new Error(body.error ?? "The profile could not be saved.");
+      }
+
+      const skillsRes = await fetch("/api/profile/skills", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          skills: selectedSkills.map((skill) => ({
+            skillId: skill.skillId,
+            proficiency: skill.proficiency,
+            isPrimary: skill.isPrimary,
+          })),
+        }),
+      });
+
+      if (!skillsRes.ok) {
+        const body = await skillsRes.json().catch(() => ({}));
+        throw new Error(body.error ?? "The skill set could not be saved.");
       }
 
       router.push("/matches?onboarding=success");
-    } catch {
-      setErrorMessage("Failed to save profile. Please review your entries.");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Failed to save profile. Please review your entries."
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -317,15 +383,17 @@ export default function OnboardingPage() {
                     }}
                     className="flex h-11 w-full rounded-[12px] border border-[#0A0A0A]/20 bg-[#FFFFFF] px-3.5 py-2 text-sm text-[#0A0A0A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A0A0A]"
                   >
-                    <option value="c0000000-0000-0000-0000-000000000001">
-                      Hyderabad (Active Chapter)
-                    </option>
-                    <option value="c0000000-0000-0000-0000-000000000002">
-                      Bengaluru (Waitlist)
-                    </option>
-                    <option value="c0000000-0000-0000-0000-000000000003">
-                      Pune (Waitlist)
-                    </option>
+                    {cities.length === 0 && (
+                      <option value="c0000000-0000-0000-0000-000000000001">
+                        Hyderabad
+                      </option>
+                    )}
+                    {cities.map((city) => (
+                      <option key={city.id} value={city.id}>
+                        {city.name}
+                        {city.is_active ? " (Active Chapter)" : " (Waitlist)"}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

@@ -9,8 +9,8 @@ import { Progress } from "@/components/ui/progress";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { ProfileService } from "@/lib/services/profile";
-import type { Profile, Project, PastHackathon } from "@/types/models";
+import { Alert } from "@/components/ui/alert";
+import type { Profile } from "@/types/models";
 import {
   ShieldCheck,
   CheckCircle2,
@@ -30,6 +30,7 @@ import {
 export default function ProfilePage() {
   const [profile, setProfile] = React.useState<Profile | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
 
   // Modals for adding project / past hackathon
   const [projectModalOpen, setProjectModalOpen] = React.useState(false);
@@ -46,70 +47,142 @@ export default function ProfilePage() {
   const [hackathonProof, setHackathonProof] = React.useState("");
 
   React.useEffect(() => {
+    let cancelled = false;
+
     async function load() {
-      // In demo/dev mode, load seeded user
-      const data = await ProfileService.getProfile("u-demo-1");
-      setProfile(data);
-      setLoading(false);
+      try {
+        const [profileRes, projectsRes, historyRes] = await Promise.all([
+          fetch("/api/profile", { cache: "no-store" }),
+          fetch("/api/profile/projects", { cache: "no-store" }),
+          fetch("/api/profile/past-hackathons", { cache: "no-store" }),
+        ]);
+
+        if (!profileRes.ok) throw new Error("profile unavailable");
+
+        const profileBody = await profileRes.json();
+        const projectsBody = projectsRes.ok ? await projectsRes.json() : {};
+        const historyBody = historyRes.ok ? await historyRes.json() : {};
+
+        if (cancelled) return;
+
+        setProfile({
+          ...profileBody.profile,
+          projects: projectsBody.projects ?? [],
+          past_hackathons: historyBody.pastHackathons ?? [],
+        });
+      } catch {
+        if (!cancelled) {
+          setProfile(null);
+          setLoadError("Your profile could not be loaded. Please try again.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
+
     load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const handleAddProject = (e: React.FormEvent) => {
+  const handleAddProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile) return;
 
-    const newProject: Project = {
-      id: `prj-${Date.now()}`,
-      profile_id: profile.id,
-      title: projectTitle,
-      description: projectDesc,
-      tech_stack: projectStack.split(",").map((s) => s.trim()).filter(Boolean),
-      repo_url: projectRepo || undefined,
-      demo_url: projectDemo || undefined,
-      created_at: new Date().toISOString(),
-    };
+    const techStack = projectStack
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
 
-    setProfile({
-      ...profile,
-      projects: [...(profile.projects || []), newProject],
-    });
-    setProjectModalOpen(false);
-    setProjectTitle("");
-    setProjectDesc("");
-    setProjectStack("");
-    setProjectRepo("");
-    setProjectDemo("");
+    if (techStack.length === 0) {
+      setLoadError("List at least one technology in the stack.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/profile/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: projectTitle,
+          description: projectDesc,
+          techStack,
+          repoUrl: projectRepo || undefined,
+          demoUrl: projectDemo || undefined,
+        }),
+      });
+
+      if (!res.ok) throw new Error("project could not be saved");
+
+      const body = await fetch("/api/profile/projects", { cache: "no-store" }).then(
+        (r) => r.json()
+      );
+
+      setProfile({ ...profile, projects: body.projects ?? [] });
+      setProjectModalOpen(false);
+      setProjectTitle("");
+      setProjectDesc("");
+      setProjectStack("");
+      setProjectRepo("");
+      setProjectDemo("");
+    } catch {
+      setLoadError("The project could not be saved. Please try again.");
+    }
   };
 
-  const handleAddHackathon = (e: React.FormEvent) => {
+  const handleAddHackathon = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile) return;
 
-    const newHackathon: PastHackathon = {
-      id: `ph-${Date.now()}`,
-      profile_id: profile.id,
-      event_name: hackathonName,
-      year: hackathonYear,
-      result: hackathonResult,
-      proof_url: hackathonProof || undefined,
-      verification_status: "pending",
-      created_at: new Date().toISOString(),
-    };
+    try {
+      const res = await fetch("/api/profile/past-hackathons", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventName: hackathonName,
+          year: hackathonYear,
+          result: hackathonResult,
+          proofUrl: hackathonProof || undefined,
+        }),
+      });
 
-    setProfile({
-      ...profile,
-      past_hackathons: [...(profile.past_hackathons || []), newHackathon],
-    });
-    setHackathonModalOpen(false);
-    setHackathonName("");
-    setHackathonProof("");
+      if (!res.ok) throw new Error("entry could not be saved");
+
+      const body = await fetch("/api/profile/past-hackathons", {
+        cache: "no-store",
+      }).then((r) => r.json());
+
+      setProfile({ ...profile, past_hackathons: body.pastHackathons ?? [] });
+      setHackathonModalOpen(false);
+      setHackathonName("");
+      setHackathonProof("");
+    } catch {
+      setLoadError("The entry could not be saved. Please try again.");
+    }
   };
 
-  if (loading || !profile) {
+  if (loading) {
     return (
       <div className="mx-auto max-w-4xl py-20 px-4 text-center">
         <p className="text-sm font-semibold text-[#0A0A0A]/60">Loading profile data...</p>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="mx-auto max-w-4xl py-20 px-4 text-center space-y-4">
+        <Alert status="error" title="Profile unavailable">
+          {loadError ?? "Your profile could not be loaded. Please sign in and try again."}
+        </Alert>
+        <div>
+          <Link href="/onboarding">
+            <Button variant="secondary" size="sm">
+              Complete your profile
+            </Button>
+          </Link>
+        </div>
       </div>
     );
   }

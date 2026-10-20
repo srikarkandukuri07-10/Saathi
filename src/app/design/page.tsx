@@ -174,8 +174,9 @@ export default function DesignSystemPage() {
               The external registration deadline for HackHyderabad closes in 48 hours. Ensure all members confirm team lock.
             </Alert>
 
-            <Alert status="info" title="Hyderabad Cold-Start Waitlist Active">
-              Matching unlocks automatically once 50 serious builders in Hyderabad complete their profiles (Currently 23/50).
+            <Alert status="info" title="City Cold-Start Waitlist">
+              Matching unlocks automatically once 50 serious builders in a city complete
+              their profiles. This copy is an example of the info state.
             </Alert>
           </div>
         </section>
@@ -223,7 +224,7 @@ export default function DesignSystemPage() {
                 <Progress
                   value={23}
                   max={50}
-                  label="Hyderabad Waitlist (23/50 Joined - 27 Left)"
+                  label="City waitlist (example values)"
                 />
               </CardContent>
             </Card>

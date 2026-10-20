@@ -114,7 +114,7 @@ Applied in order by `selectEligibleCandidates`:
 
 | Endpoint | Method | Behaviour |
 |---|---|---|
-| `/api/matches` | GET | Authenticated feed for the viewer. `403` with an explanation while the completeness gate is closed, `200` with the ranked feed otherwise. Falls back to the labelled Hyderabad sample pool when the database is unreachable. |
+| `/api/matches` | GET | Authenticated feed for the viewer. `403` with an explanation while the completeness gate is closed, `200` with the ranked feed otherwise. The feed is computed from the live pool only — there is no sample pool behind it. |
 | `/api/matching/precompute` | POST | Cron job (`Bearer $CRON_SECRET`). Scores every eligible pair for every published hackathon and upserts into `match_candidates` (`user_id`, `candidate_id`, `hackathon_id`, `score`, `breakdown`, `reasons`). Offline events are city-scoped, online events are not. |
 | `/api/match-requests` | GET/POST/PATCH | Persists the mutual-accept shield. On accept the 1:1 conversation is created and both parties are queued a notification. |
 

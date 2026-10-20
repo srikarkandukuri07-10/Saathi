@@ -4,6 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { listHackathons } from "@/lib/data/hackathons";
+import { getCityWaitlistStats } from "@/lib/data/waitlist";
+import { getPlatformStats } from "@/lib/data/notifications";
 import {
   Calendar,
   Compass,
@@ -16,42 +19,24 @@ import {
   Users,
 } from "lucide-react";
 
-export default function HomePage() {
-  const sampleHackathons = [
-    {
-      id: "h1",
-      name: "Smart India Hackathon 2026",
-      organizer: "Ministry of Education & AICTE",
-      mode: "Offline (Hyderabad & Nodal Centres)",
-      deadline: "12 days left",
-      prize: "₹1,00,000 / Problem Statement",
-      theme: "GovTech, Healthcare & Smart Automation",
-      teamSize: "6 members",
-      href: "/hackathons/smart-india-hackathon-2026",
-    },
-    {
-      id: "h2",
-      name: "HackHyderabad 2026",
-      organizer: "T-Hub Hyderabad",
-      mode: "Offline (T-Hub Knowledge City)",
-      deadline: "7 days left",
-      prize: "₹5,00,000",
-      theme: "AI Agents & Autonomous Systems",
-      teamSize: "2-4 members",
-      href: "/hackathons/hackhyderabad-2026",
-    },
-    {
-      id: "h3",
-      name: "EthIndia 2026",
-      organizer: "Devfolio",
-      mode: "Hybrid (Bengaluru & Hyderabad Satellite)",
-      deadline: "20 days left",
-      prize: "₹65,00,000+",
-      theme: "Web3 Infrastructure & ZK Proofs",
-      teamSize: "2-4 members",
-      href: "/hackathons/ethindia-2026",
-    },
-  ];
+function daysUntil(iso: string): string {
+  const diff = new Date(iso).getTime() - Date.now();
+  const days = Math.ceil(diff / 86400000);
+  if (days < 0) return "Registration closed";
+  if (days === 0) return "Closes today";
+  return `${days} day${days === 1 ? "" : "s"} left`;
+}
+
+export default async function HomePage() {
+  const launchCityId = "c0000000-0000-0000-0000-000000000001";
+
+  const [hackathons, waitlist, stats] = await Promise.all([
+    listHackathons(null),
+    getCityWaitlistStats(launchCityId),
+    getPlatformStats(),
+  ]);
+
+  const featured = hackathons.slice(0, 3);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -95,15 +80,21 @@ export default function HomePage() {
                 </span>
               </div>
               <Badge variant="black" size="sm">
-                23 / 50 Joined
+                {waitlist.currentCount} / {waitlist.targetCount} Joined
               </Badge>
             </div>
             <p className="text-xs text-[#0A0A0A]/80 mb-3">
-              Matching pool unlocks across Hyderabad as soon as 50 verified builders join. Invite driven peers to fast-track matching.
+              Matching pool unlocks across Hyderabad as soon as {waitlist.targetCount} verified builders join. Invite driven peers to fast-track matching.
             </p>
-            <Progress value={23} max={50} showPercentage={false} />
+            <Progress
+              value={waitlist.currentCount}
+              max={waitlist.targetCount}
+              showPercentage={false}
+            />
             <div className="mt-3 flex items-center justify-between text-[11px] font-semibold text-[#0A0A0A]">
-              <span>27 spots left for Founding Badge</span>
+              <span>
+                {waitlist.remaining} spot{waitlist.remaining === 1 ? "" : "s"} left for Founding Badge
+              </span>
               <Link href="/waitlist" className="underline hover:opacity-75">
                 Share Referral Link &rarr;
               </Link>
@@ -134,46 +125,70 @@ export default function HomePage() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {sampleHackathons.map((hackathon) => (
-              <Card
-                key={hackathon.id}
-                variant="interactive"
-                className="flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <Badge variant="green" size="sm">
-                      {hackathon.deadline}
-                    </Badge>
-                    <span className="text-xs font-bold text-[#0A0A0A]">
-                      {hackathon.teamSize}
-                    </span>
-                  </div>
-
-                  <CardTitle className="text-xl mb-1">{hackathon.name}</CardTitle>
-                  <p className="text-xs text-[#0A0A0A]/60 mb-3 font-medium">
-                    {hackathon.organizer}
-                  </p>
-                  <p className="text-xs text-[#0A0A0A]/80 line-clamp-2 mb-4">
-                    {hackathon.theme}
-                  </p>
-                </div>
-
-                <div className="pt-4 border-t border-[#0A0A0A]/10 space-y-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-[#0A0A0A]/60">Prize Pool:</span>
-                    <span className="font-bold text-[#0A0A0A]">{hackathon.prize}</span>
-                  </div>
-                  <Link href={`/hackathons`} className="block w-full">
-                    <Button variant="secondary" size="sm" className="w-full">
-                      Find Teammates for This
+          {featured.length === 0 ? (
+            <Card className="border-2 border-[#0A0A0A] border-dashed p-10 text-center">
+              <CardContent>
+                <h3 className="text-lg font-bold">No events published yet</h3>
+                <p className="text-xs text-[#0A0A0A]/70 mt-2 max-w-md mx-auto leading-relaxed">
+                  The external hackathon directory is empty. Published events appear
+                  here with their registration deadline, prize pool and team size.
+                </p>
+                <div className="mt-5">
+                  <Link href="/hackathons">
+                    <Button variant="secondary" size="sm" className="font-bold">
+                      Open the directory
                     </Button>
                   </Link>
                 </div>
-              </Card>
-            ))}
-          </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {featured.map((hackathon) => (
+                <Card
+                  key={hackathon.id}
+                  variant="interactive"
+                  className="flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <Badge variant="green" size="sm">
+                        {daysUntil(hackathon.registration_deadline)}
+                      </Badge>
+                      <span className="text-xs font-bold text-[#0A0A0A]">
+                        {hackathon.min_team_size}-{hackathon.max_team_size} members
+                      </span>
+                    </div>
+
+                    <CardTitle className="text-xl mb-1">{hackathon.name}</CardTitle>
+                    <p className="text-xs text-[#0A0A0A]/60 mb-3 font-medium">
+                      {hackathon.organizer}
+                    </p>
+                    <p className="text-xs text-[#0A0A0A]/80 line-clamp-2 mb-4">
+                      {hackathon.theme}
+                    </p>
+                  </div>
+
+                  <div className="pt-4 border-t border-[#0A0A0A]/10 space-y-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-[#0A0A0A]/60">Prize Pool:</span>
+                      <span className="font-bold text-[#0A0A0A]">
+                        {hackathon.prize_pool ?? "To be announced"}
+                      </span>
+                    </div>
+                    <Link
+                      href={`/hackathons/${hackathon.slug}`}
+                      className="block w-full"
+                    >
+                      <Button variant="secondary" size="sm" className="w-full">
+                        Find Teammates for This
+                      </Button>
+                    </Link>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -233,7 +248,41 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 4. Footer with India DPDP & Legal Compliance */}
+      {/* 4. Live platform counters */}
+      <section className="py-14 px-4 sm:px-6 lg:px-8 border-b border-[#0A0A0A]/10 bg-[#FFFFFF]">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl font-extrabold tracking-tight">
+              Live network, counted from the database
+            </h2>
+            <p className="mt-2 text-sm text-[#0A0A0A]/70">
+              No placeholder numbers: every figure below is a live row count.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { label: "Published hackathons", value: stats.hackathons },
+              { label: "Onboarded builders", value: stats.builders },
+              { label: "Squads formed", value: stats.teams },
+              { label: "Active city chapters", value: stats.cities },
+            ].map((stat) => (
+              <Card key={stat.label} className="border-2 border-[#0A0A0A] text-center">
+                <CardContent>
+                  <div className="text-3xl font-black tabular-nums text-[#0A0A0A]">
+                    {stat.value}
+                  </div>
+                  <div className="text-xs font-semibold text-[#0A0A0A]/60 mt-1">
+                    {stat.label}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 5. Footer with India DPDP & Legal Compliance */}
       <footer className="border-t-2 border-[#0A0A0A] bg-[#FFFFFF] py-12 px-4 sm:px-6 lg:px-8 mt-auto">
         <div className="mx-auto max-w-6xl flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
           <div>

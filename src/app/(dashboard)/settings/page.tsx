@@ -121,11 +121,43 @@ export default function SettingsPage() {
     availability: form.availability,
   })
 
-  // Load existing profile
+  // Load the stored profile so the form shows the real values.
   useEffect(() => {
-    if (!user) return
-    // In real app: fetch from Supabase
-    // For now keep defaults
+    let cancelled = false
+
+    async function load() {
+      try {
+        const res = await fetch('/api/profile', { cache: 'no-store' })
+        if (!res.ok) throw new Error('profile unavailable')
+
+        const body = await res.json()
+        if (cancelled || !body.profile) return
+
+        const existing = body.profile
+        setForm(prev => ({
+          ...prev,
+          full_name: existing.name ?? '',
+          college: existing.college ?? '',
+          year: existing.year ?? 0,
+          branch: existing.branch ?? '',
+          city_name: existing.city_name ?? '',
+          linkedin_url: existing.linkedin_url ?? '',
+          github_url: existing.github_url ?? '',
+          bio: existing.bio ?? '',
+          skills: (existing.skills ?? []).map((s: any) => s.skill_name).filter(Boolean),
+          goals: existing.goals ?? prev.goals,
+          intensity: existing.intensity ?? prev.intensity,
+          availability: existing.availability ?? prev.availability,
+        }))
+      } catch {
+        if (!cancelled) setSaveError('Your profile could not be loaded.')
+      }
+    }
+
+    load()
+    return () => {
+      cancelled = true
+    }
   }, [user])
 
   const update = <K extends keyof SettingsForm>(key: K, value: SettingsForm[K]) => {
@@ -147,12 +179,37 @@ export default function SettingsPage() {
     setSaving(true)
     setSaveError('')
     try {
-      // In prod: PATCH /api/profile or supabase update
-      await new Promise(r => setTimeout(r, 800))
+      const res = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.full_name,
+          college: form.college,
+          year: form.year || undefined,
+          branch: form.branch,
+          bio: form.bio,
+          linkedinUrl: form.linkedin_url,
+          githubUrl: form.github_url,
+          goals: form.goals,
+          intensity: form.intensity,
+          availability: form.availability,
+          lookingForSkills: form.looking_for_skills,
+          preferredTeamSize: form.preferred_team_size,
+          openToRemote: form.open_to_remote,
+        }),
+      })
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error ?? 'Failed to save.')
+      }
+
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)
-    } catch {
-      setSaveError('Failed to save. Please try again.')
+    } catch (error) {
+      setSaveError(
+        error instanceof Error ? error.message : 'Failed to save. Please try again.',
+      )
     } finally {
       setSaving(false)
     }

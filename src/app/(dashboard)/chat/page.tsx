@@ -35,34 +35,30 @@ interface Conversation {
   unread_count: number
 }
 
-// ── Mock data for dev mode ─────────────────────────────────────────────────
-const MOCK_CONVERSATIONS: Conversation[] = [
-  {
-    id: 'conv-1',
-    other_user: { id: 'u2', name: 'Priya Krishnan', avatar: undefined, isOnline: true },
-    last_message: 'Are you joining the ETHIndia hackathon?',
-    last_message_at: new Date(Date.now() - 5 * 60000).toISOString(),
-    unread_count: 2,
-  },
-  {
-    id: 'conv-2',
-    other_user: { id: 'u3', name: 'Arjun Mehta', avatar: undefined, isOnline: false, lastSeen: new Date(Date.now() - 2 * 3600000).toISOString() },
-    last_message: 'Sent you my GitHub profile 🔗',
-    last_message_at: new Date(Date.now() - 3600000).toISOString(),
-    unread_count: 0,
-  },
-]
+// ── Data shapes ────────────────────────────────────────────────────────────
+interface ConversationUser {
+  id: string
+  name: string
+  avatar?: string
+  isOnline: boolean
+  lastSeen?: string
+}
 
-const MOCK_MESSAGES: Record<string, Message[]> = {
-  'conv-1': [
-    { id: 'm1', conversation_id: 'conv-1', sender_id: 'u2', content: 'Hey! Saw your profile. Solid React work.', created_at: new Date(Date.now() - 30 * 60000).toISOString(), read_at: new Date().toISOString() },
-    { id: 'm2', conversation_id: 'conv-1', sender_id: 'me', content: 'Thanks! Love your ML projects.', created_at: new Date(Date.now() - 25 * 60000).toISOString(), read_at: new Date().toISOString() },
-    { id: 'm3', conversation_id: 'conv-1', sender_id: 'u2', content: 'Are you joining the ETHIndia hackathon?', created_at: new Date(Date.now() - 5 * 60000).toISOString(), read_at: null },
-  ],
-  'conv-2': [
-    { id: 'm4', conversation_id: 'conv-2', sender_id: 'me', content: 'Hey Arjun, checked out your profile. Backend + ML is rare 🔥', created_at: new Date(Date.now() - 4 * 3600000).toISOString(), read_at: new Date().toISOString() },
-    { id: 'm5', conversation_id: 'conv-2', sender_id: 'u3', content: 'Sent you my GitHub profile 🔗', created_at: new Date(Date.now() - 3600000).toISOString(), read_at: null },
-  ],
+interface Message {
+  id: string
+  conversation_id: string
+  sender_id: string
+  content: string
+  created_at: string
+  read_at: string | null
+}
+
+interface Conversation {
+  id: string
+  other_user: ConversationUser
+  last_message?: string
+  last_message_at?: string
+  unread_count: number
 }
 
 function AvatarInitial({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' }) {
@@ -77,17 +73,63 @@ function AvatarInitial({ name, size = 'md' }: { name: string; size?: 'sm' | 'md'
 
 export default function ChatPage() {
   const { user, isAuthenticated } = useAuth()
-  const [conversations, setConversations] = useState<Conversation[]>(MOCK_CONVERSATIONS)
+  const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const supabase = useRef(createClient())
+
+  // ── Load the conversation list ──────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false
+
+    async function load() {
+      try {
+        const res = await fetch('/api/conversations', { cache: 'no-store' })
+        if (!res.ok) throw new Error('conversations unavailable')
+
+        const body = await res.json()
+        if (cancelled) return
+
+        const myId = user?.id
+        const list: Conversation[] = (body.conversations ?? []).map((conv: any) => {
+          const other = (conv.participants ?? []).find((p: any) => p.id !== myId)
+          return {
+            id: conv.id,
+            other_user: {
+              id: other?.id ?? conv.id,
+              name: other?.name ?? 'Teammate',
+              avatar: other?.avatar_url,
+              isOnline: false,
+            },
+            last_message: conv.last_message?.content,
+            last_message_at: conv.last_message?.created_at ?? conv.updated_at,
+            unread_count: conv.unread_count ?? 0,
+          }
+        })
+
+        setConversations(list)
+        setSelectedConv((current) => current ?? list[0] ?? null)
+      } catch {
+        if (!cancelled) {
+          setConversations([])
+          setLoadError('Your conversations could not be loaded.')
+        }
+      }
+    }
+
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
 
   // ── Load messages when conversation changes ──────────────────────────────
   useEffect(() => {
@@ -106,23 +148,28 @@ export default function ChatPage() {
     if (isAuthenticated && user) {
       // Real Supabase path
       const fetchMessages = async () => {
-        const { data } = await supabase.current
-          .from('messages')
-          .select('*')
-          .eq('conversation_id', selectedConv.id)
-          .order('created_at', { ascending: true })
-          .limit(100)
+        try {
+          const res = await fetch(`/api/conversations/${selectedConv.id}/messages`, {
+            cache: 'no-store',
+          })
+          if (!res.ok) throw new Error('messages unavailable')
 
-        if (data) setMessages(data)
-        setLoadingMessages(false)
-
-        // Mark messages as read
-        await supabase.current
-          .from('messages')
-          .update({ read_at: new Date().toISOString() })
-          .eq('conversation_id', selectedConv.id)
-          .neq('sender_id', user.id)
-          .is('read_at', null)
+          const body = await res.json()
+          setMessages(
+            (body.messages ?? []).map((m: any) => ({
+              id: m.id,
+              conversation_id: m.conversation_id,
+              sender_id: m.sender_id,
+              content: m.content,
+              created_at: m.created_at,
+              read_at: m.is_read ? m.created_at : null,
+            })),
+          )
+        } catch {
+          setLoadError('The messages could not be loaded.')
+        } finally {
+          setLoadingMessages(false)
+        }
       }
 
       fetchMessages()
@@ -154,17 +201,8 @@ export default function ChatPage() {
 
       channelRef.current = channel
     } else {
-      // Dev/mock mode
-      const mockMsgs = MOCK_MESSAGES[selectedConv.id] ?? []
-      setMessages(mockMsgs)
+      setMessages([])
       setLoadingMessages(false)
-
-      // Simulate typing after 2s
-      const t = setTimeout(() => {
-        setIsTyping(true)
-        setTimeout(() => setIsTyping(false), 2000)
-      }, 2000)
-      return () => clearTimeout(t)
     }
 
     return () => {
@@ -199,7 +237,7 @@ export default function ChatPage() {
     setSending(true)
     setDraft('')
 
-    const senderId = user?.id ?? 'me'
+    const senderId = user?.id ?? ''
     const optimistic: Message = {
       id: `tmp-${Date.now()}`,
       conversation_id: selectedConv.id,
@@ -212,27 +250,27 @@ export default function ChatPage() {
     // Optimistic update
     setMessages((prev) => [...prev, optimistic])
 
-    if (isAuthenticated && user) {
-      const { data, error } = await supabase.current
-        .from('messages')
-        .insert({
-          conversation_id: selectedConv.id,
-          sender_id: user.id,
-          content,
-        })
-        .select()
-        .single()
+    try {
+      const res = await fetch(`/api/conversations/${selectedConv.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      })
 
-      if (!error && data) {
-        // Replace optimistic with real message
-        setMessages((prev) =>
-          prev.map((m) => (m.id === optimistic.id ? (data as Message) : m)),
-        )
-      }
+      if (!res.ok) throw new Error('message failed')
+
+      const body = await res.json()
+      setMessages((prev) =>
+        prev.map((m) => (m.id === optimistic.id ? body.message : m)),
+      )
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== optimistic.id))
+      setDraft(content)
+      setLoadError('The message could not be sent. Please try again.')
     }
 
     setSending(false)
-  }, [draft, selectedConv, sending, user, isAuthenticated])
+  }, [draft, selectedConv, sending, user])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -429,6 +467,12 @@ export default function ChatPage() {
 
   return (
     <div className="h-[calc(100vh-4rem)] bg-black flex overflow-hidden">
+      {loadError && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 px-3 py-2 bg-[#B8F2C9] border border-[#0A0A0A] text-[#0A0A0A] text-xs font-semibold">
+          {loadError}
+        </div>
+      )}
+
       {/* Sidebar — always visible on desktop, hidden on mobile when thread open */}
       <div
         className={`w-full lg:w-80 border-r border-white/10 flex-shrink-0 ${

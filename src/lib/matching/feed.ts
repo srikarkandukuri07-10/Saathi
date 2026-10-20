@@ -3,17 +3,15 @@ import {
   relationName,
   relationRecord,
   selectEligibleCandidates,
-  toMatchCandidate,
   type ProfileRow,
   type ViewerContext,
 } from "@/lib/matching/candidateGenerator";
 import { parseLocation, type RawLocation } from "@/lib/matching/location";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { APP_CONFIG } from "@/config/site";
-import { MatchingService } from "@/lib/services/matching";
 import type { MatchCandidate } from "@/types/models";
 
-export type MatchFeedSource = "database" | "seed";
+export type MatchFeedSource = "database";
 
 export interface MatchFeed {
   matches: MatchCandidate[];
@@ -202,27 +200,12 @@ export async function getMatchFeed(
   } catch (error) {
     console.error("[matching] database feed unavailable:", error);
 
-    const viewer = toMatchCandidate({
-      id: viewerId,
-      name: "You",
-      goals: "balanced",
-      intensity: "serious",
-      availability: "offline_city",
-    });
-
-    const matches = await MatchingService.getMatches(viewer, {
-      hackathonId: context.hackathonId,
-      hackathonMode: context.hackathonMode,
-      hackathonCity: context.hackathonCity,
-      targetSkillsNeeded: context.targetSkillsNeeded ?? [],
-      preferredIntensity: context.preferredIntensity,
-    });
-
+    // No sample pool: the feed is empty until the database answers.
     return {
-      matches,
-      source: "seed",
+      matches: [],
+      source: "database",
       notice:
-        "Live matching pool unavailable — showing the Hyderabad sample chapter.",
+        "The matching pool could not be loaded. Please try again in a moment.",
     };
   }
 }

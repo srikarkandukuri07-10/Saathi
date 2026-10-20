@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ProfileService } from "@/lib/services/profile";
+import { getPublicProfile } from "@/lib/data/profiles";
 import { APP_CONFIG } from "@/config/site";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -26,7 +26,7 @@ interface PublicProfileProps {
 }
 
 export async function generateMetadata({ params }: PublicProfileProps) {
-  const profile = await ProfileService.getPublicProfile(params.id) || await ProfileService.getProfile("u-demo-1");
+  const profile = await getPublicProfile(params.id);
   if (!profile) return { title: "Profile Not Found" };
 
   return {
@@ -41,7 +41,7 @@ export async function generateMetadata({ params }: PublicProfileProps) {
 }
 
 export default async function PublicProfilePage({ params }: PublicProfileProps) {
-  const profile = (await ProfileService.getPublicProfile(params.id)) || (await ProfileService.getProfile("u-demo-1"));
+  const profile = await getPublicProfile(params.id);
 
   if (!profile) {
     notFound();

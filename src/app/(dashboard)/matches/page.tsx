@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import Link from "next/link";
@@ -9,7 +9,6 @@ import { Dialog } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
-import { MatchingService } from "@/lib/services/matching";
 import { APP_CONFIG } from "@/config/site";
 import type { MatchCandidate } from "@/types/models";
 import {
@@ -28,7 +27,15 @@ import {
 
 export default function MatchesPage() {
   const [matches, setMatches] = React.useState<MatchCandidate[]>([]);
-  const [selectedHackathon, setSelectedHackathon] = React.useState("20000000-0000-0000-0000-000000000001");
+  const [hackathons, setHackathons] = React.useState<
+    Array<{ id: string; name: string; city_name?: string }>
+  >([]);
+  const [chapter, setChapter] = React.useState<{
+    cityName: string;
+    currentCount: number;
+    targetCount: number;
+  } | null>(null);
+  const [selectedHackathon, setSelectedHackathon] = React.useState("");
   const [firstTimerFriendly, setFirstTimerFriendly] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [gateMessage, setGateMessage] = React.useState<string | null>(null);
@@ -42,8 +49,47 @@ export default function MatchesPage() {
   const [successNotice, setSuccessNotice] = React.useState<string | null>(null);
   const [requestError, setRequestError] = React.useState<string | null>(null);
 
+  // Load the event list and the chapter progress, then the ranked feed.
+  React.useEffect(() => {
+    async function loadContext() {
+      try {
+        const [hackathonsRes, waitlistRes] = await Promise.all([
+          fetch("/api/hackathons", { cache: "no-store" }),
+          fetch("/api/waitlist", { cache: "no-store" }),
+        ]);
+
+        if (hackathonsRes.ok) {
+          const body = await hackathonsRes.json();
+          const list = body.hackathons ?? [];
+          setHackathons(list);
+          setSelectedHackathon((current) => current || list[0]?.id || "");
+        }
+
+        if (waitlistRes.ok) {
+          const body = await waitlistRes.json();
+          if (body.stats) {
+            setChapter({
+              cityName: body.stats.cityName,
+              currentCount: body.stats.currentCount,
+              targetCount: body.stats.targetCount,
+            });
+          }
+        }
+      } catch {
+        // The feed request below reports the failure to the user.
+      }
+    }
+
+    loadContext();
+  }, []);
+
   React.useEffect(() => {
     async function load() {
+      if (!selectedHackathon) {
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setGateMessage(null);
 
@@ -64,41 +110,24 @@ export default function MatchesPage() {
           return;
         }
 
+        if (res.status === 401) {
+          setGateMessage("Sign in to see the teammates who match your profile.");
+          setMatches([]);
+          setLoading(false);
+          return;
+        }
+
         if (!res.ok) throw new Error("match feed unavailable");
 
         const body = await res.json();
         setMatches(body.matches ?? []);
         setFeedNotice(body.notice ?? null);
         setLoading(false);
-        return;
       } catch {
-        // Offline / unauthenticated demo path: score the sample chapter locally.
-        const userProfile = {
-          id: "u-demo-1",
-          name: "Aditya Narang",
-          city: "Hyderabad",
-          location: { lat: 17.4455, lng: 78.3489 },
-          skills: [
-            { category: "frontend", skill: "Next.js / React", proficiency: 5, isPrimary: true },
-            { category: "backend", skill: "FastAPI", proficiency: 4 },
-          ],
-          goals: "win" as const,
-          intensity: "grind" as const,
-          availability: "offline_city" as const,
-          reliabilityScore: 95,
-          pastHackathonsCount: 2,
-          isVerified: true,
-        };
-
-        const data = await MatchingService.getMatches(userProfile, {
-          hackathonId: selectedHackathon,
-          hackathonMode: "offline",
-          hackathonCity: "Hyderabad",
-          targetSkillsNeeded: ["ml_ai", "hardware_iot", "design"],
-        });
-
-        setMatches(data);
-        setFeedNotice("Live matching pool unavailable â€” showing the Hyderabad sample chapter.");
+        setMatches([]);
+        setFeedNotice(
+          "The matching pool could not be loaded. Check your connection and try again."
+        );
         setLoading(false);
       }
     }
@@ -141,18 +170,11 @@ export default function MatchesPage() {
         `Match request dispatched to ${selectedCandidate.candidate.name}. Once mutually accepted, direct chat will unlock!`
       );
       setTimeout(() => setSuccessNotice(null), 5000);
-    } catch {
-      // Offline / demo path: keep the request locally so the flow stays usable.
-      await MatchingService.sendMatchRequest({
-        senderId: "u-demo-1",
-        receiverId: selectedCandidate.candidate.id,
-        hackathonId: selectedHackathon,
-        note: requestNote,
-      });
-
-      setRequestModalOpen(false);
+    } catch (error) {
       setRequestError(
-        "Live requests are unavailable right now, so this request was queued locally and will be delivered once the connection is restored."
+        error instanceof Error
+          ? error.message
+          : "Could not send the request. Please try again."
       );
     } finally {
       setSendingRequest(false);
@@ -163,9 +185,10 @@ export default function MatchesPage() {
   const displayedMatches = React.useMemo(() => {
     if (!firstTimerFriendly) return matches;
     return [...matches].sort((a, b) => {
-      // Prioritize rising builder / first-timers
-      const aIsFirst = a.candidate.past_hackathons?.length === 0;
-      const bIsFirst = b.candidate.past_hackathons?.length === 0;
+      // The fairness bonus is only awarded to first-time participants, so it
+      // is the signal the server computed for "rising builder".
+      const aIsFirst = a.breakdown.fairnessBonus > 0;
+      const bIsFirst = b.breakdown.fairnessBonus > 0;
       if (aIsFirst && !bIsFirst) return -1;
       if (!aIsFirst && bIsFirst) return 1;
       return b.score - a.score;
@@ -218,9 +241,9 @@ export default function MatchesPage() {
           </Alert>
         )}
 
-        {/* Fallback notice */}
+        {/* Feed notice */}
         {feedNotice && !gateMessage && (
-          <Alert status="info" title="Sample chapter">
+          <Alert status="info" title="Matching pool">
             {feedNotice}
           </Alert>
         )}
@@ -243,9 +266,15 @@ export default function MatchesPage() {
               onChange={(e) => setSelectedHackathon(e.target.value)}
               className="rounded-[10px] border border-[#0A0A0A] bg-[#FFFFFF] px-3 py-1.5 text-xs font-bold text-[#0A0A0A]"
             >
-              <option value="20000000-0000-0000-0000-000000000001">Smart India Hackathon 2026 (Hyderabad)</option>
-              <option value="20000000-0000-0000-0000-000000000002">HackHyderabad 2026 (T-Hub)</option>
-              <option value="20000000-0000-0000-0000-000000000003">EthIndia 2026 (Hybrid)</option>
+              {hackathons.length === 0 && (
+                <option value="">No published events</option>
+              )}
+              {hackathons.map((hackathon) => (
+                <option key={hackathon.id} value={hackathon.id}>
+                  {hackathon.name}
+                  {hackathon.city_name ? ` (${hackathon.city_name})` : ""}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -267,10 +296,12 @@ export default function MatchesPage() {
         <div className="rounded-[16px] border border-[#0A0A0A]/15 bg-[#B8F2C9]/25 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
           <div>
             <span className="font-bold text-[#0A0A0A] block">
-              Hyderabad Chapter Growth: 23 / 50 Verified Builders Joined
+              {chapter
+                ? `${chapter.cityName} Chapter Growth: ${chapter.currentCount} / ${chapter.targetCount} Verified Builders Joined`
+                : "Chapter growth is shown once a city chapter is active."}
             </span>
             <span className="text-[#0A0A0A]/70">
-              Matches are currently computed from active Hyderabad chapter participants.
+              Matches are computed from the onboarded builders of the active chapter.
             </span>
           </div>
           <Link href="/waitlist">
