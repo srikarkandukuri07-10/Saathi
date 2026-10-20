@@ -19,31 +19,45 @@ const { spawn } = require("child_process");
 
 const START_PORT = Number(process.env.PORT) || 3000;
 const MAX_PORT = START_PORT + 20;
-const PROBE_TIMEOUT_MS = 400;
 
-function canConnect(host, port) {
+/**
+ * Tries to bind a port on one address.
+ * Resolves to true when the bind succeeded, meaning the port was free.
+ *
+ * Binding is used instead of connecting: on Windows a wildcard bind
+ * (0.0.0.0) succeeds even when another process already holds the same port
+ * on 127.0.0.1, which is exactly the split-brain this script avoids.
+ */
+function canBind(host, port) {
   return new Promise((resolve) => {
-    const socket = new net.Socket();
-    const finish = (inUse) => {
-      socket.destroy();
-      resolve(inUse);
-    };
+    const server = net.createServer();
 
-    socket.setTimeout(PROBE_TIMEOUT_MS);
-    socket.once("connect", () => finish(true));
-    socket.once("timeout", () => finish(false));
-    socket.once("error", () => finish(false));
-    socket.connect(port, host);
+    server.once("error", (error) => {
+      server.close(() => resolve(false));
+      if (error.code !== "EADDRINUSE" && error.code !== "EACCES") {
+        // Any other error still means we cannot safely claim the port.
+        resolve(false);
+      }
+    });
+
+    server.once("listening", () => {
+      server.close(() => resolve(true));
+    });
+
+    server.listen({ host, port, exclusive: true });
   });
 }
 
-/** A port is unusable when anything answers on either loopback family. */
+/** A port is unusable when it cannot be bound on either loopback family. */
 async function isPortInUse(port) {
   const results = await Promise.all([
-    canConnect("127.0.0.1", port),
-    canConnect("::1", port),
+    canBind("127.0.0.1", port),
+    canBind("::1", port),
   ]);
-  return results.some(Boolean);
+
+  // Both addresses must be claimable, otherwise another local service owns
+  // part of that port and traffic would be split between the two apps.
+  return !results.every(Boolean);
 }
 
 async function findFreePort() {
@@ -60,7 +74,23 @@ async function main() {
   const port = await findFreePort();
   const url = `http://localhost:${port}`;
 
-  console.log(`> Hackpact dev server -> ${url}`);
+  if (port !== START_PORT) {
+    const width = 64;
+    const line = (text) => `| ${text.padEnd(width - 4)} |`;
+    const bar = `+${"-".repeat(width)}+`;
+
+    console.log("");
+    console.log(bar);
+    console.log(line("OPEN THE APP AT: " + url));
+    console.log(line(""));
+    console.log(line(`Port ${START_PORT} belongs to another local application, so the`));
+    console.log(line("dev server moved. Requests to port 3000 will NOT reach"));
+    console.log(line("Hackpact. Use the URL above."));
+    console.log(bar);
+    console.log("");
+  } else {
+    console.log(`> Hackpact dev server -> ${url}`);
+  }
 
   const nextBin = path.join(
     __dirname,
