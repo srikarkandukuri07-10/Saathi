@@ -43,6 +43,23 @@ export function calculateProfileCompleteness(profile: Partial<Profile>): number 
   return Math.min(100, Math.round(score));
 }
 
+/**
+ * Returns a human-readable relative time string (e.g. "5m ago", "2h ago").
+ * Used in chat message timestamps.
+ */
+export function formatDistanceToNow(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime()
+  const seconds = Math.floor(diff / 1000)
+  if (seconds < 60) return 'just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  return new Date(isoString).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
+
 export function formatDistanceKm(meters: number): string {
   const km = Math.round(meters / 1000);
   if (km < 1) return "Nearby (< 1 km)";

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -15,7 +15,7 @@ import { Plus, Trash2, ArrowRight, ShieldCheck, Users } from "lucide-react";
 function NewTeamForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialHackathonId = searchParams.get("hackathonId") || "h-sih-2026";
+  const initialHackathonId = searchParams.get("hackathonId") || "20000000-0000-0000-0000-000000000001";
 
   const [hackathonId, setHackathonId] = React.useState(initialHackathonId);
   const [teamName, setTeamName] = React.useState("HyperScale Vision");
@@ -116,10 +116,10 @@ function NewTeamForm() {
                   onChange={(e) => setHackathonId(e.target.value)}
                   className="flex h-11 w-full rounded-[12px] border border-[#0A0A0A]/20 bg-[#FFFFFF] px-3.5 py-2 text-sm text-[#0A0A0A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A0A0A]"
                 >
-                  <option value="h-sih-2026">Smart India Hackathon 2026 (Hyderabad & Nodal)</option>
-                  <option value="h-hackhyd-2026">HackHyderabad 2026 (T-Hub)</option>
-                  <option value="h-ethindia-2026">EthIndia 2026 (Hybrid)</option>
-                  <option value="h-gdsc-2026">Google Solution Challenge 2026</option>
+                  <option value="20000000-0000-0000-0000-000000000001">Smart India Hackathon 2026 (Hyderabad & Nodal)</option>
+                  <option value="20000000-0000-0000-0000-000000000002">HackHyderabad 2026 (T-Hub)</option>
+                  <option value="20000000-0000-0000-0000-000000000003">EthIndia 2026 (Hybrid)</option>
+                  <option value="20000000-0000-0000-0000-000000000004">Google Solution Challenge 2026</option>
                 </select>
               </div>
 

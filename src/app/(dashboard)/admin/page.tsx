@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import Link from "next/link";
@@ -33,7 +33,7 @@ export default function AdminDashboardPage() {
   // Concierge State
   const [candidateA, setCandidateA] = React.useState("u-1");
   const [candidateB, setCandidateB] = React.useState("u-2");
-  const [conciergeHackathon, setConciergeHackathon] = React.useState("h-sih-2026");
+  const [conciergeHackathon, setConciergeHackathon] = React.useState("20000000-0000-0000-0000-000000000001");
   const [conciergeSuccess, setConciergeSuccess] = React.useState<string | null>(null);
 
   // CSV Import State
@@ -68,7 +68,7 @@ export default function AdminDashboardPage() {
 
   const handleConciergeMatch = () => {
     setConciergeSuccess(
-      "🎉 Concierge Introduction Sent! Mutual chat channel opened and notification dispatched to both builders."
+      "ðŸŽ‰ Concierge Introduction Sent! Mutual chat channel opened and notification dispatched to both builders."
     );
     setTimeout(() => setConciergeSuccess(null), 5000);
   };
@@ -199,9 +199,9 @@ export default function AdminDashboardPage() {
                     onChange={(e) => setConciergeHackathon(e.target.value)}
                     className="w-full h-11 rounded-[12px] border border-[#0A0A0A] bg-[#FFFFFF] px-3.5 text-xs font-bold"
                   >
-                    <option value="h-sih-2026">Smart India Hackathon 2026 (Hyderabad)</option>
-                    <option value="h-hackhyd-2026">HackHyderabad 2026 (T-Hub)</option>
-                    <option value="h-ethindia-2026">EthIndia 2026</option>
+                    <option value="20000000-0000-0000-0000-000000000001">Smart India Hackathon 2026 (Hyderabad)</option>
+                    <option value="20000000-0000-0000-0000-000000000002">HackHyderabad 2026 (T-Hub)</option>
+                    <option value="20000000-0000-0000-0000-000000000003">EthIndia 2026</option>
                   </select>
                 </div>
 
@@ -305,7 +305,7 @@ export default function AdminDashboardPage() {
                 <Textarea
                   value={csvContent}
                   onChange={(e) => setCsvContent(e.target.value)}
-                  placeholder={`Name, Organizer, Mode, City, Deadline, Theme, PrizePool, WebsiteUrl&#10;Smart Telangana Hackathon, Govt of Telangana, offline, Hyderabad, 2026-11-20, GovTech, ₹200000, https://telangana.gov.in&#10;Global Solana Breakpoint, Solana, hybrid, Bengaluru, 2026-12-05, Web3, $50000, https://solana.com`}
+                  placeholder={`Name, Organizer, Mode, City, Deadline, Theme, PrizePool, WebsiteUrl&#10;Smart Telangana Hackathon, Govt of Telangana, offline, Hyderabad, 2026-11-20, GovTech, â‚¹200000, https://telangana.gov.in&#10;Global Solana Breakpoint, Solana, hybrid, Bengaluru, 2026-12-05, Web3, $50000, https://solana.com`}
                   rows={6}
                 />
                 <Button

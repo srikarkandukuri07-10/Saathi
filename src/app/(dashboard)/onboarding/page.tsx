@@ -11,6 +11,7 @@ import { Progress } from "@/components/ui/progress";
 import { Alert } from "@/components/ui/alert";
 import { APP_CONFIG } from "@/config/site";
 import { ProfileService } from "@/lib/services/profile";
+import { useAuth } from "@/hooks/use-auth";
 import { calculateProfileCompleteness } from "@/lib/utils";
 import type { Skill } from "@/types/models";
 import {
@@ -34,6 +35,7 @@ interface SelectedSkill {
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const availableSkills = React.useMemo(() => ProfileService.getStructuredSkills(), []);
 
   // Form states
@@ -56,11 +58,25 @@ export default function OnboardingPage() {
   const [availability, setAvailability] = React.useState<"online_only" | "offline_city" | "willing_to_travel">("offline_city");
   const [travelCities, setTravelCities] = React.useState<string[]>(["Hyderabad", "Bengaluru"]);
 
-  const [selectedSkills, setSelectedSkills] = React.useState<SelectedSkill[]>([
-    { skillId: "s1", skillName: "Next.js / React", category: "frontend", proficiency: 5, isPrimary: true },
-    { skillId: "s5", skillName: "Python / FastAPI", category: "backend", proficiency: 4, isPrimary: false },
-    { skillId: "s8", skillName: "LLMs & AI Agents", category: "ml_ai", proficiency: 4, isPrimary: true },
-  ]);
+  // Seed the picker from the catalog so the stored skill ids always match the
+  // seeded `skills` rows (profile_skills.skill_id is a foreign key).
+  const [selectedSkills, setSelectedSkills] = React.useState<SelectedSkill[]>(() => {
+    const seedByName: Record<string, { proficiency: number; isPrimary: boolean }> = {
+      "Next.js / React": { proficiency: 5, isPrimary: true },
+      "Python / FastAPI": { proficiency: 4, isPrimary: false },
+      "LLMs & AI Agents": { proficiency: 4, isPrimary: true },
+    };
+
+    return ProfileService.getStructuredSkills()
+      .filter((skill) => seedByName[skill.name])
+      .map((skill) => ({
+        skillId: skill.id,
+        skillName: skill.name,
+        category: skill.category,
+        proficiency: seedByName[skill.name].proficiency,
+        isPrimary: seedByName[skill.name].isPrimary,
+      }));
+  });
 
   const [customSkillInput, setCustomSkillInput] = React.useState("");
 
@@ -147,7 +163,10 @@ export default function OnboardingPage() {
 
     setIsSubmitting(true);
     try {
-      await ProfileService.saveProfile("user_me", {
+      // The profile row is keyed by the signed-in auth user id.
+      const profileId = user?.id ?? "user_me";
+
+      const result = await ProfileService.saveProfile(profileId, {
         name,
         college,
         year,
@@ -167,6 +186,13 @@ export default function OnboardingPage() {
         ageConsentConfirmed: ageConsent,
         privacyConsentConfirmed: privacyConsent,
       });
+
+      if (!result.persisted && result.persistenceError) {
+        setErrorMessage(
+          `Your profile was saved locally but could not be written to the database: ${result.persistenceError}`
+        );
+        return;
+      }
 
       router.push("/matches?onboarding=success");
     } catch {

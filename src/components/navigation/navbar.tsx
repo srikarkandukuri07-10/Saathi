@@ -6,42 +6,51 @@ import { usePathname } from "next/navigation";
 import { APP_CONFIG } from "@/config/site";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Compass,
   Users,
   Sparkles,
   Trophy,
   ShieldCheck,
-  User,
   Menu,
   X,
   Calendar,
+  Settings,
+  LogOut,
+  MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface NavbarProps {
-  user?: {
-    id: string;
-    name: string;
-    role: string;
-    completeness: number;
-  } | null;
-}
-
-export function Navbar({ user }: NavbarProps) {
+export function Navbar() {
   const pathname = usePathname();
+  const { user, isAuthenticated, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const [signingOut, setSigningOut] = React.useState(false);
 
   const navLinks = [
     { href: "/hackathons", label: "Hackathons", icon: Calendar },
     { href: "/matches", label: "Matches", icon: Compass },
     { href: "/teams", label: "Teams", icon: Users },
+    { href: "/chat", label: "Chat", icon: MessageCircle },
     { href: "/spin", label: "Lucky Spin", icon: Sparkles },
     { href: "/hall-of-fame", label: "Hall of Fame", icon: Trophy },
-    { href: "/waitlist", label: "Hyderabad Launch", icon: Sparkles },
   ];
 
-  const isAdmin = user?.role === "admin";
+  // Derive display name from Supabase user metadata
+  const displayName =
+    user?.user_metadata?.full_name ??
+    user?.user_metadata?.name ??
+    user?.email?.split("@")[0] ??
+    "You";
+
+  const initial = displayName.charAt(0).toUpperCase();
+  const isAdmin = user?.user_metadata?.role === "admin";
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    await signOut();
+  }
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-[#0A0A0A]/10 bg-[#FFFFFF]/90 backdrop-blur-md">
@@ -88,37 +97,52 @@ export function Navbar({ user }: NavbarProps) {
 
         {/* Right CTA / User State */}
         <div className="hidden md:flex items-center gap-3">
-          <Link href="/design" className="text-xs font-medium text-[#0A0A0A]/60 hover:text-[#0A0A0A] hover:underline">
-            Design Guide
-          </Link>
-
           {isAdmin && (
             <Link href="/admin">
               <Badge variant="black" className="hover:opacity-80 cursor-pointer">
                 <ShieldCheck className="h-3 w-3" />
-                Admin Panel
+                Admin
               </Badge>
             </Link>
           )}
 
-          {user ? (
-            <div className="flex items-center gap-3 pl-2 border-l border-[#0A0A0A]/10">
+          {isAuthenticated ? (
+            <div className="flex items-center gap-2 pl-2 border-l border-[#0A0A0A]/10">
+              {/* Settings */}
+              <Link
+                href="/settings"
+                className={cn(
+                  "p-2 rounded-[10px] transition-colors",
+                  pathname === "/settings"
+                    ? "bg-[#B8F2C9] text-[#0A0A0A]"
+                    : "text-[#0A0A0A]/60 hover:text-[#0A0A0A] hover:bg-[#0A0A0A]/5"
+                )}
+                title="Settings"
+              >
+                <Settings className="h-4 w-4" />
+              </Link>
+
+              {/* Avatar + name */}
               <Link href="/profile" className="flex items-center gap-2 group">
                 <div className="flex flex-col items-end text-right">
                   <span className="text-xs font-bold text-[#0A0A0A] group-hover:underline">
-                    {user.name}
+                    {displayName}
                   </span>
-                  <div className="flex items-center gap-1 text-[10px] text-[#0A0A0A]/60">
-                    <span>Profile:</span>
-                    <span className="font-bold text-[#0A0A0A]">
-                      {user.completeness}%
-                    </span>
-                  </div>
                 </div>
                 <div className="h-8 w-8 rounded-full border border-[#0A0A0A] bg-[#B8F2C9] flex items-center justify-center font-bold text-xs">
-                  {user.name.charAt(0)}
+                  {initial}
                 </div>
               </Link>
+
+              {/* Sign out */}
+              <button
+                onClick={handleSignOut}
+                disabled={signingOut}
+                className="p-2 rounded-[10px] text-[#0A0A0A]/50 hover:text-[#0A0A0A] hover:bg-[#0A0A0A]/5 transition-colors"
+                title="Sign out"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -127,9 +151,9 @@ export function Navbar({ user }: NavbarProps) {
                   Sign In
                 </Button>
               </Link>
-              <Link href="/onboarding">
+              <Link href="/login">
                 <Button variant="primary" size="sm">
-                  Join Hackpact
+                  Join {APP_CONFIG.name}
                 </Button>
               </Link>
             </div>
@@ -176,19 +200,44 @@ export function Navbar({ user }: NavbarProps) {
 
           <div className="pt-2 border-t border-[#0A0A0A]/10 flex flex-col gap-2">
             <Link
-              href="/design"
-              onClick={() => setMobileMenuOpen(false)}
-              className="text-xs font-semibold text-[#0A0A0A] p-2 hover:bg-[#0A0A0A]/5 rounded"
-            >
-              🎨 View Design Tokens & Style Guide (/design)
-            </Link>
-            <Link
-              href="/admin"
+              href="/settings"
               onClick={() => setMobileMenuOpen(false)}
               className="text-xs font-semibold text-[#0A0A0A] p-2 hover:bg-[#0A0A0A]/5 rounded flex items-center gap-2"
             >
-              <ShieldCheck className="h-4 w-4" /> Admin Concierge & Tools
+              <Settings className="h-4 w-4" /> Settings
             </Link>
+            <Link
+              href="/waitlist"
+              onClick={() => setMobileMenuOpen(false)}
+              className="text-xs font-semibold text-[#0A0A0A] p-2 hover:bg-[#0A0A0A]/5 rounded flex items-center gap-2"
+            >
+              <Sparkles className="h-4 w-4" /> Hyderabad Launch
+            </Link>
+            {isAdmin && (
+              <Link
+                href="/admin"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-xs font-semibold text-[#0A0A0A] p-2 hover:bg-[#0A0A0A]/5 rounded flex items-center gap-2"
+              >
+                <ShieldCheck className="h-4 w-4" /> Admin Panel
+              </Link>
+            )}
+            {isAuthenticated ? (
+              <button
+                onClick={() => { setMobileMenuOpen(false); handleSignOut() }}
+                className="text-xs font-semibold text-[#0A0A0A]/60 p-2 hover:bg-[#0A0A0A]/5 rounded flex items-center gap-2 text-left"
+              >
+                <LogOut className="h-4 w-4" /> Sign out
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-xs font-semibold text-[#0A0A0A] p-2 hover:bg-[#0A0A0A]/5 rounded"
+              >
+                Sign in / Join
+              </Link>
+            )}
           </div>
         </div>
       )}

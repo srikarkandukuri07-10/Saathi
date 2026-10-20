@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import Link from "next/link";
@@ -28,9 +28,11 @@ import {
 
 export default function MatchesPage() {
   const [matches, setMatches] = React.useState<MatchCandidate[]>([]);
-  const [selectedHackathon, setSelectedHackathon] = React.useState("h-sih-2026");
+  const [selectedHackathon, setSelectedHackathon] = React.useState("20000000-0000-0000-0000-000000000001");
   const [firstTimerFriendly, setFirstTimerFriendly] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
+  const [gateMessage, setGateMessage] = React.useState<string | null>(null);
+  const [feedNotice, setFeedNotice] = React.useState<string | null>(null);
 
   // Request modal state
   const [requestModalOpen, setRequestModalOpen] = React.useState(false);
@@ -38,36 +40,67 @@ export default function MatchesPage() {
   const [requestNote, setRequestNote] = React.useState("");
   const [sendingRequest, setSendingRequest] = React.useState(false);
   const [successNotice, setSuccessNotice] = React.useState<string | null>(null);
+  const [requestError, setRequestError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     async function load() {
       setLoading(true);
-      const userProfile = {
-        id: "u-demo-1",
-        name: "Aditya Narang",
-        city: "Hyderabad",
-        location: { lat: 17.4455, lng: 78.3489 },
-        skills: [
-          { category: "frontend", skill: "Next.js / React", proficiency: 5, isPrimary: true },
-          { category: "backend", skill: "FastAPI", proficiency: 4 },
-        ],
-        goals: "win" as const,
-        intensity: "grind" as const,
-        availability: "offline_city" as const,
-        reliabilityScore: 95,
-        pastHackathonsCount: 2,
-        isVerified: true,
-      };
+      setGateMessage(null);
 
-      const data = await MatchingService.getMatches(userProfile, {
-        hackathonId: selectedHackathon,
-        hackathonMode: "offline",
-        hackathonCity: "Hyderabad",
-        targetSkillsNeeded: ["ml_ai", "hardware_iot", "design"],
-      });
+      try {
+        const res = await fetch(
+          `/api/matches?hackathonId=${encodeURIComponent(selectedHackathon)}`,
+          { cache: "no-store" }
+        );
 
-      setMatches(data);
-      setLoading(false);
+        if (res.status === 403) {
+          const body = await res.json().catch(() => ({}));
+          setGateMessage(
+            body.message ??
+              "Complete your profile to unlock teammate matching."
+          );
+          setMatches([]);
+          setLoading(false);
+          return;
+        }
+
+        if (!res.ok) throw new Error("match feed unavailable");
+
+        const body = await res.json();
+        setMatches(body.matches ?? []);
+        setFeedNotice(body.notice ?? null);
+        setLoading(false);
+        return;
+      } catch {
+        // Offline / unauthenticated demo path: score the sample chapter locally.
+        const userProfile = {
+          id: "u-demo-1",
+          name: "Aditya Narang",
+          city: "Hyderabad",
+          location: { lat: 17.4455, lng: 78.3489 },
+          skills: [
+            { category: "frontend", skill: "Next.js / React", proficiency: 5, isPrimary: true },
+            { category: "backend", skill: "FastAPI", proficiency: 4 },
+          ],
+          goals: "win" as const,
+          intensity: "grind" as const,
+          availability: "offline_city" as const,
+          reliabilityScore: 95,
+          pastHackathonsCount: 2,
+          isVerified: true,
+        };
+
+        const data = await MatchingService.getMatches(userProfile, {
+          hackathonId: selectedHackathon,
+          hackathonMode: "offline",
+          hackathonCity: "Hyderabad",
+          targetSkillsNeeded: ["ml_ai", "hardware_iot", "design"],
+        });
+
+        setMatches(data);
+        setFeedNotice("Live matching pool unavailable â€” showing the Hyderabad sample chapter.");
+        setLoading(false);
+      }
     }
     load();
   }, [selectedHackathon]);
@@ -85,19 +118,45 @@ export default function MatchesPage() {
     if (!selectedCandidate) return;
 
     setSendingRequest(true);
-    await MatchingService.sendMatchRequest({
-      senderId: "u-demo-1",
-      receiverId: selectedCandidate.candidate.id,
-      hackathonId: selectedHackathon,
-      note: requestNote,
-    });
+    setRequestError(null);
 
-    setSendingRequest(false);
-    setRequestModalOpen(false);
-    setSuccessNotice(
-      `Match request dispatched to ${selectedCandidate.candidate.name}. Once mutually accepted, direct chat will unlock!`
-    );
-    setTimeout(() => setSuccessNotice(null), 5000);
+    try {
+      const res = await fetch("/api/match-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          receiver_id: selectedCandidate.candidate.id,
+          hackathon_id: selectedHackathon,
+          note: requestNote,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Could not send the request");
+      }
+
+      setRequestModalOpen(false);
+      setSuccessNotice(
+        `Match request dispatched to ${selectedCandidate.candidate.name}. Once mutually accepted, direct chat will unlock!`
+      );
+      setTimeout(() => setSuccessNotice(null), 5000);
+    } catch {
+      // Offline / demo path: keep the request locally so the flow stays usable.
+      await MatchingService.sendMatchRequest({
+        senderId: "u-demo-1",
+        receiverId: selectedCandidate.candidate.id,
+        hackathonId: selectedHackathon,
+        note: requestNote,
+      });
+
+      setRequestModalOpen(false);
+      setRequestError(
+        "Live requests are unavailable right now, so this request was queued locally and will be delivered once the connection is restored."
+      );
+    } finally {
+      setSendingRequest(false);
+    }
   };
 
   // Filter list if first-timer friendly mode is toggled
@@ -147,6 +206,32 @@ export default function MatchesPage() {
           </Alert>
         )}
 
+        {/* Completeness gate */}
+        {gateMessage && (
+          <Alert status="warning" title="Matching locked">
+            {gateMessage}
+            <div className="mt-2">
+              <Link href="/onboarding" className="underline font-semibold">
+                Finish your profile &rarr;
+              </Link>
+            </div>
+          </Alert>
+        )}
+
+        {/* Fallback notice */}
+        {feedNotice && !gateMessage && (
+          <Alert status="info" title="Sample chapter">
+            {feedNotice}
+          </Alert>
+        )}
+
+        {/* Request failure */}
+        {requestError && (
+          <Alert status="error" title="Request not sent">
+            {requestError}
+          </Alert>
+        )}
+
         {/* Event Selector & Fairness Toggle */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-[16px] border-2 border-[#0A0A0A] bg-[#0A0A0A]/[0.02]">
           <div className="flex items-center gap-3">
@@ -158,9 +243,9 @@ export default function MatchesPage() {
               onChange={(e) => setSelectedHackathon(e.target.value)}
               className="rounded-[10px] border border-[#0A0A0A] bg-[#FFFFFF] px-3 py-1.5 text-xs font-bold text-[#0A0A0A]"
             >
-              <option value="h-sih-2026">Smart India Hackathon 2026 (Hyderabad)</option>
-              <option value="h-hackhyd-2026">HackHyderabad 2026 (T-Hub)</option>
-              <option value="h-ethindia-2026">EthIndia 2026 (Hybrid)</option>
+              <option value="20000000-0000-0000-0000-000000000001">Smart India Hackathon 2026 (Hyderabad)</option>
+              <option value="20000000-0000-0000-0000-000000000002">HackHyderabad 2026 (T-Hub)</option>
+              <option value="20000000-0000-0000-0000-000000000003">EthIndia 2026 (Hybrid)</option>
             </select>
           </div>
 
@@ -200,6 +285,29 @@ export default function MatchesPage() {
           <div className="text-center py-20 text-xs font-semibold text-[#0A0A0A]/60">
             Running background compatibility scorer...
           </div>
+        ) : displayedMatches.length === 0 ? (
+          <Card className="border-2 border-[#0A0A0A] border-dashed p-10 text-center">
+            <CardContent>
+              <h3 className="text-lg font-bold">No compatible teammates yet</h3>
+              <p className="text-xs text-[#0A0A0A]/70 mt-2 max-w-md mx-auto leading-relaxed">
+                {gateMessage
+                  ? "Your profile needs a few more signals before the matching engine can rank teammates for you."
+                  : "No one in the Hyderabad chapter matches this event yet. Lock in more skills, or invite peers to fast-track the cold start."}
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-2 mt-5">
+                <Link href="/onboarding">
+                  <Button variant="primary" size="sm" className="font-bold">
+                    Strengthen my profile
+                  </Button>
+                </Link>
+                <Link href="/waitlist">
+                  <Button variant="secondary" size="sm" className="font-bold">
+                    Invite peers
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         ) : (
           <div className="space-y-6">
             {displayedMatches.map((match) => (

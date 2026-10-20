@@ -74,3 +74,65 @@ export function scoreCandidate(
   context: MatchContext
 ): MatchScoreResult;
 ```
+
+---
+
+## Phase 3 Pipeline (Implementation)
+
+The scorer above is the single source of truth for ranking. Phase 3 wires it to
+real data, adds the eligibility gates, and exposes the result over HTTP.
+
+### 1. Candidate Generation
+
+`src/lib/matching/candidateGenerator.ts` is a pure module (no I/O, fully unit tested):
+
+| Function | Responsibility |
+|---|---|
+| `toMatchCandidate(row)` | Maps a `profiles` row (+ joined skills) into `MatchCandidateProfile`. |
+| `toPublicProfile(row)` | Builds the projection returned to other users. **Exact coordinates are stripped server-side.** |
+| `selectEligibleCandidates(rows, viewerId, options)` | Applies every hard gate. |
+| `buildMatchFeed(viewerRow, candidates, context)` | Scores, sorts by score, and caps the result set. |
+| `relationName` / `relationRecord` | Normalize PostgREST embedded relations (object or array). |
+
+`src/lib/matching/location.ts` parses the PostGIS `geography` column from any
+of the shapes PostgREST returns (GeoJSON, little/big-endian WKB hex, explicit
+lat/lng) so distance bands work regardless of server version.
+
+### 2. Eligibility Gates
+
+Applied in order by `selectEligibleCandidates`:
+
+1. **Self** — a builder is never their own match.
+2. **Banned** — `is_banned = true` never enters the pool.
+3. **Opt-out** — `matching_enabled = false` (unless explicitly included).
+4. **Onboarding** — `is_onboarded = true`.
+5. **Completeness floor** — `completeness_score >= 80` (config: `APP_CONFIG.minProfileCompleteness`).
+6. **Blocks** — anyone the viewer blocked, or who blocked the viewer.
+7. **Existing connections** — builders already connected through a match request.
+
+### 3. Serving the feed
+
+| Endpoint | Method | Behaviour |
+|---|---|---|
+| `/api/matches` | GET | Authenticated feed for the viewer. `403` with an explanation while the completeness gate is closed, `200` with the ranked feed otherwise. Falls back to the labelled Hyderabad sample pool when the database is unreachable. |
+| `/api/matching/precompute` | POST | Cron job (`Bearer $CRON_SECRET`). Scores every eligible pair for every published hackathon and upserts into `match_candidates` (`user_id`, `candidate_id`, `hackathon_id`, `score`, `breakdown`, `reasons`). Offline events are city-scoped, online events are not. |
+| `/api/match-requests` | GET/POST/PATCH | Persists the mutual-accept shield. On accept the 1:1 conversation is created and both parties are queued a notification. |
+
+### 4. Notifications
+
+| Endpoint | Method | Behaviour |
+|---|---|---|
+| `/api/notifications/subscribe` | POST/DELETE | Stores the browser Web Push subscription (`push_subscriptions`). |
+| `/api/notifications/push` | POST | Cron job (`Bearer $CRON_SECRET`). Delivers queued `notifications` rows through Web Push, marks them `push_sent_at`, and deletes subscriptions the browser dropped (`404`/`410`). |
+
+VAPID keys (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`) are read
+server-side only. When they are missing the sender degrades to a no-op instead
+of failing the job.
+
+### 5. Privacy Invariants
+
+- Exact GPS never leaves the server: `toPublicProfile` returns `location: undefined`.
+- The UI only ever shows coarse distance bands (`Within 5 km`, `Same metro area`).
+- Blocked and banned builders are excluded before scoring, not after.
+- `looking_for_skills` (the roles a builder is recruiting for) is read on the
+  server and only used to weight matching, never shown verbatim to other users.

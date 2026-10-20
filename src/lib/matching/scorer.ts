@@ -14,6 +14,8 @@ export interface MatchCandidateProfile {
   pastHackathonsCount: number;
   isVerified: boolean;
   githubReposCount?: number;
+  /** Skill categories/names this builder is actively looking for in a teammate. */
+  lookingForSkills?: string[];
 }
 
 export interface MatchContext {
@@ -40,7 +42,7 @@ export interface MatchScoreResult {
 /**
  * Calculates geodesic distance between two coordinate pairs in kilometers (Haversine formula)
  */
-function calculateHaversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+export function calculateHaversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; // Earth's radius in km
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;

@@ -1,333 +1,451 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Dialog } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { Alert } from "@/components/ui/alert";
-import { ChatService } from "@/lib/services/chat";
-import { APP_CONFIG } from "@/config/site";
-import type { Conversation, Message } from "@/types/models";
-import {
-  Send,
-  ShieldCheck,
-  Flag,
-  UserX,
-  MessageSquare,
-  Lock,
-  CheckCircle2,
-  Calendar,
-  Sparkles,
-} from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Send, ArrowLeft, Circle, Lock, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/hooks/use-auth'
+import { formatDistanceToNow } from '@/lib/utils'
+import type { RealtimeChannel } from '@supabase/supabase-js'
+
+interface ConversationUser {
+  id: string
+  name: string
+  avatar?: string
+  isOnline: boolean
+  lastSeen?: string
+}
+
+interface Message {
+  id: string
+  conversation_id: string
+  sender_id: string
+  content: string
+  created_at: string
+  read_at: string | null
+}
+
+interface Conversation {
+  id: string
+  other_user: ConversationUser
+  last_message?: string
+  last_message_at?: string
+  unread_count: number
+}
+
+// ── Mock data for dev mode ─────────────────────────────────────────────────
+const MOCK_CONVERSATIONS: Conversation[] = [
+  {
+    id: 'conv-1',
+    other_user: { id: 'u2', name: 'Priya Krishnan', avatar: undefined, isOnline: true },
+    last_message: 'Are you joining the ETHIndia hackathon?',
+    last_message_at: new Date(Date.now() - 5 * 60000).toISOString(),
+    unread_count: 2,
+  },
+  {
+    id: 'conv-2',
+    other_user: { id: 'u3', name: 'Arjun Mehta', avatar: undefined, isOnline: false, lastSeen: new Date(Date.now() - 2 * 3600000).toISOString() },
+    last_message: 'Sent you my GitHub profile 🔗',
+    last_message_at: new Date(Date.now() - 3600000).toISOString(),
+    unread_count: 0,
+  },
+]
+
+const MOCK_MESSAGES: Record<string, Message[]> = {
+  'conv-1': [
+    { id: 'm1', conversation_id: 'conv-1', sender_id: 'u2', content: 'Hey! Saw your profile. Solid React work.', created_at: new Date(Date.now() - 30 * 60000).toISOString(), read_at: new Date().toISOString() },
+    { id: 'm2', conversation_id: 'conv-1', sender_id: 'me', content: 'Thanks! Love your ML projects.', created_at: new Date(Date.now() - 25 * 60000).toISOString(), read_at: new Date().toISOString() },
+    { id: 'm3', conversation_id: 'conv-1', sender_id: 'u2', content: 'Are you joining the ETHIndia hackathon?', created_at: new Date(Date.now() - 5 * 60000).toISOString(), read_at: null },
+  ],
+  'conv-2': [
+    { id: 'm4', conversation_id: 'conv-2', sender_id: 'me', content: 'Hey Arjun, checked out your profile. Backend + ML is rare 🔥', created_at: new Date(Date.now() - 4 * 3600000).toISOString(), read_at: new Date().toISOString() },
+    { id: 'm5', conversation_id: 'conv-2', sender_id: 'u3', content: 'Sent you my GitHub profile 🔗', created_at: new Date(Date.now() - 3600000).toISOString(), read_at: null },
+  ],
+}
+
+function AvatarInitial({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' }) {
+  const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+  const cls = size === 'sm' ? 'w-8 h-8 text-xs' : 'w-10 h-10 text-sm'
+  return (
+    <div className={`${cls} bg-[#B8F2C9] text-black font-black flex items-center justify-center flex-shrink-0`}>
+      {initials}
+    </div>
+  )
+}
 
 export default function ChatPage() {
-  const [conversations, setConversations] = React.useState<Conversation[]>([]);
-  const [activeConvId, setActiveConvId] = React.useState<string>("conv-1");
-  const [messages, setMessages] = React.useState<Message[]>([]);
-  const [newMessage, setNewMessage] = React.useState("");
-  const [isTyping, setIsTyping] = React.useState(false);
-  const [loading, setLoading] = React.useState(true);
+  const { user, isAuthenticated } = useAuth()
+  const [conversations, setConversations] = useState<Conversation[]>(MOCK_CONVERSATIONS)
+  const [selectedConv, setSelectedConv] = useState<Conversation | null>(null)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [draft, setDraft] = useState('')
+  const [sending, setSending] = useState(false)
+  const [isTyping, setIsTyping] = useState(false)
+  const [loadingMessages, setLoadingMessages] = useState(false)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const channelRef = useRef<RealtimeChannel | null>(null)
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const supabase = useRef(createClient())
 
-  // Safety Modal
-  const [reportModalOpen, setReportModalOpen] = React.useState(false);
-  const [reportReason, setReportReason] = React.useState("unresponsive");
-  const [reportDetails, setReportDetails] = React.useState("");
-  const [actionNotice, setActionNotice] = React.useState<string | null>(null);
+  // ── Load messages when conversation changes ──────────────────────────────
+  useEffect(() => {
+    if (!selectedConv) return
 
-  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+    setLoadingMessages(true)
 
-  React.useEffect(() => {
-    async function load() {
-      const convs = await ChatService.getConversations("u-demo-1");
-      setConversations(convs);
-      if (convs.length > 0) {
-        const msgs = await ChatService.getMessages(convs[0].id);
-        setMessages(msgs);
-      }
-      setLoading(false);
+    const client = supabase.current
+
+    // Unsubscribe from previous channel
+    if (channelRef.current) {
+      client.removeChannel(channelRef.current)
+      channelRef.current = null
     }
-    load();
-  }, []);
 
-  React.useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (isAuthenticated && user) {
+      // Real Supabase path
+      const fetchMessages = async () => {
+        const { data } = await supabase.current
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', selectedConv.id)
+          .order('created_at', { ascending: true })
+          .limit(100)
 
-  const activeConversation = conversations.find((c) => c.id === activeConvId);
-  const otherParticipant = activeConversation?.participants.find((p) => p.id !== "u-demo-1");
+        if (data) setMessages(data)
+        setLoadingMessages(false)
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !activeConvId) return;
+        // Mark messages as read
+        await supabase.current
+          .from('messages')
+          .update({ read_at: new Date().toISOString() })
+          .eq('conversation_id', selectedConv.id)
+          .neq('sender_id', user.id)
+          .is('read_at', null)
+      }
 
-    const content = newMessage;
-    setNewMessage("");
+      fetchMessages()
 
-    const sent = await ChatService.sendMessage({
-      conversationId: activeConvId,
-      senderId: "u-demo-1",
-      senderName: "Aditya Narang",
+      // Realtime subscription
+      const channel = supabase.current
+        .channel(`conv:${selectedConv.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `conversation_id=eq.${selectedConv.id}`,
+          },
+          (payload) => {
+            const newMsg = payload.new as Message
+            setMessages((prev) => [...prev, newMsg])
+          },
+        )
+        .on('broadcast', { event: 'typing' }, (payload) => {
+          if (payload.payload.user_id !== user.id) {
+            setIsTyping(true)
+            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+            typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 3000)
+          }
+        })
+        .subscribe()
+
+      channelRef.current = channel
+    } else {
+      // Dev/mock mode
+      const mockMsgs = MOCK_MESSAGES[selectedConv.id] ?? []
+      setMessages(mockMsgs)
+      setLoadingMessages(false)
+
+      // Simulate typing after 2s
+      const t = setTimeout(() => {
+        setIsTyping(true)
+        setTimeout(() => setIsTyping(false), 2000)
+      }, 2000)
+      return () => clearTimeout(t)
+    }
+
+    return () => {
+      if (channelRef.current) {
+        client.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+    }
+  }, [selectedConv, isAuthenticated, user])
+
+  // ── Auto-scroll to bottom ──────────────────────────────────────────────
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, isTyping])
+
+  // ── Broadcast typing indicator ─────────────────────────────────────────
+  const broadcastTyping = useCallback(() => {
+    if (!channelRef.current || !user) return
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { user_id: user.id },
+    })
+  }, [user])
+
+  // ── Send message ───────────────────────────────────────────────────────
+  const sendMessage = useCallback(async () => {
+    const content = draft.trim()
+    if (!content || !selectedConv || sending) return
+
+    setSending(true)
+    setDraft('')
+
+    const senderId = user?.id ?? 'me'
+    const optimistic: Message = {
+      id: `tmp-${Date.now()}`,
+      conversation_id: selectedConv.id,
+      sender_id: senderId,
       content,
-    });
+      created_at: new Date().toISOString(),
+      read_at: null,
+    }
 
-    setMessages((prev) => [...prev, sent]);
+    // Optimistic update
+    setMessages((prev) => [...prev, optimistic])
 
-    // Simulate typing feedback from peer
-    setTimeout(() => {
-      setIsTyping(true);
-      setTimeout(() => {
-        setIsTyping(false);
-      }, 2000);
-    }, 1000);
-  };
+    if (isAuthenticated && user) {
+      const { data, error } = await supabase.current
+        .from('messages')
+        .insert({
+          conversation_id: selectedConv.id,
+          sender_id: user.id,
+          content,
+        })
+        .select()
+        .single()
 
-  const handleReport = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otherParticipant) return;
+      if (!error && data) {
+        // Replace optimistic with real message
+        setMessages((prev) =>
+          prev.map((m) => (m.id === optimistic.id ? (data as Message) : m)),
+        )
+      }
+    }
 
-    await ChatService.reportUser({
-      reporterId: "u-demo-1",
-      reportedUserId: otherParticipant.id,
-      conversationId: activeConvId,
-      reason: reportReason,
-      description: reportDetails,
-    });
+    setSending(false)
+  }, [draft, selectedConv, sending, user, isAuthenticated])
 
-    setReportModalOpen(false);
-    setActionNotice(`Report logged for moderation review. Thank you for keeping ${APP_CONFIG.name} safe.`);
-    setTimeout(() => setActionNotice(null), 5000);
-  };
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendMessage()
+    }
+    broadcastTyping()
+  }
 
-  return (
-    <div className="min-h-screen bg-[#FFFFFF] py-6 px-4 sm:px-6 lg:px-8 pb-24">
-      <div className="mx-auto max-w-6xl space-y-4">
-        {/* Header Alert */}
-        {actionNotice && (
-          <Alert status="info" title="Moderation Action">
-            {actionNotice}
-          </Alert>
-        )}
+  const myId = user?.id ?? 'me'
 
-        <div className="rounded-[20px] border-2 border-[#0A0A0A] bg-[#FFFFFF] shadow-[6px_6px_0px_#0A0A0A] overflow-hidden grid grid-cols-1 md:grid-cols-3 h-[750px]">
-          {/* Left: Conversations List */}
-          <div className="border-r-2 border-[#0A0A0A] flex flex-col bg-[#FFFFFF]">
-            <div className="p-4 border-b border-[#0A0A0A]/10 bg-[#0A0A0A]/[0.02]">
-              <div className="flex items-center justify-between mb-1">
-                <h2 className="text-lg font-bold tracking-tight">Direct Messages</h2>
-                <Badge variant="green" size="sm">Mutual Accept Only</Badge>
+  // ── Conversation list ──────────────────────────────────────────────────
+  const ConversationList = () => (
+    <div className="flex flex-col h-full">
+      <div className="p-4 border-b border-white/10">
+        <h1 className="text-white font-black text-lg">Messages</h1>
+        <p className="text-white/40 text-xs mt-0.5">
+          Only mutual matches can message
+        </p>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {conversations.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center px-6">
+            <Lock className="h-8 w-8 text-white/20 mb-3" />
+            <p className="text-white/60 text-sm">No conversations yet</p>
+            <p className="text-white/30 text-xs mt-1">
+              Accept a match request to start chatting
+            </p>
+          </div>
+        ) : (
+          conversations.map((conv) => (
+            <button
+              key={conv.id}
+              className={`w-full flex items-center gap-3 p-4 text-left hover:bg-white/5 transition-colors border-b border-white/5 ${selectedConv?.id === conv.id ? 'bg-white/10' : ''}`}
+              onClick={() => setSelectedConv(conv)}
+            >
+              <div className="relative">
+                <AvatarInitial name={conv.other_user.name} />
+                {conv.other_user.isOnline && (
+                  <Circle className="absolute -bottom-0.5 -right-0.5 w-3 h-3 fill-[#B8F2C9] text-[#B8F2C9]" />
+                )}
               </div>
-              <p className="text-[11px] text-[#0A0A0A]/60">
-                Spam-free channels opened upon mutual interest.
-              </p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <span className="text-white font-medium text-sm truncate">
+                    {conv.other_user.name}
+                  </span>
+                  {conv.last_message_at && (
+                    <span className="text-white/30 text-xs flex-shrink-0 ml-2">
+                      {formatDistanceToNow(conv.last_message_at)}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between mt-0.5">
+                  <p className="text-white/40 text-xs truncate">{conv.last_message}</p>
+                  {conv.unread_count > 0 && (
+                    <Badge variant="green" className="flex-shrink-0 ml-2 text-xs px-1.5 py-0.5">
+                      {conv.unread_count}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  )
+
+  // ── Message thread ─────────────────────────────────────────────────────
+  const MessageThread = () => {
+    if (!selectedConv) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full text-center px-8">
+          <Lock className="h-12 w-12 text-white/10 mb-4" />
+          <p className="text-white/40 text-sm">Select a conversation</p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="flex flex-col h-full">
+        {/* Header */}
+        <div className="flex items-center gap-3 p-4 border-b border-white/10">
+          <button
+            className="lg:hidden text-white/60 hover:text-white mr-1"
+            onClick={() => setSelectedConv(null)}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <AvatarInitial name={selectedConv.other_user.name} size="sm" />
+          <div>
+            <p className="text-white font-medium text-sm">{selectedConv.other_user.name}</p>
+            <p className="text-white/40 text-xs">
+              {selectedConv.other_user.isOnline ? (
+                <span className="text-[#B8F2C9]">Online</span>
+              ) : (
+                `Last seen ${selectedConv.other_user.lastSeen ? formatDistanceToNow(selectedConv.other_user.lastSeen) : 'a while ago'}`
+              )}
+            </p>
+          </div>
+          <div className="ml-auto">
+            <Badge variant="outline" className="text-xs border-white/20 text-white/40">
+              <Lock className="h-2.5 w-2.5 mr-1" />
+              Mutual match
+            </Badge>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {loadingMessages ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-white/40" />
             </div>
-
-            <div className="flex-1 overflow-y-auto divide-y divide-[#0A0A0A]/10">
-              {conversations.map((conv) => {
-                const partner = conv.participants.find((p) => p.id !== "u-demo-1");
-                const isActive = conv.id === activeConvId;
-
-                return (
+          ) : messages.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-white/30 text-sm">No messages yet. Say hi! 👋</p>
+            </div>
+          ) : (
+            messages.map((msg) => {
+              const isMe = msg.sender_id === myId
+              return (
+                <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                   <div
-                    key={conv.id}
-                    onClick={() => setActiveConvId(conv.id)}
-                    className={`p-4 cursor-pointer transition-colors flex items-start gap-3 ${
-                      isActive ? "bg-[#B8F2C9]/40 border-l-4 border-l-[#0A0A0A]" : "hover:bg-[#0A0A0A]/5"
+                    className={`max-w-[75%] px-4 py-2.5 text-sm ${
+                      isMe
+                        ? 'bg-[#B8F2C9] text-black font-medium'
+                        : 'bg-white/10 text-white'
                     }`}
                   >
-                    <div className="h-10 w-10 rounded-full border border-[#0A0A0A] bg-[#B8F2C9] flex items-center justify-center font-bold text-sm shrink-0">
-                      {partner?.name.charAt(0) || "U"}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-xs text-[#0A0A0A] truncate">
-                          {partner?.name || "Peer"}
-                        </span>
-                        <span className="text-[10px] text-[#0A0A0A]/50">
-                          {conv.last_message ? new Date(conv.last_message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
-                        </span>
-                      </div>
-                      <span className="text-[10px] font-semibold text-[#0A0A0A]/60 block truncate">
-                        {conv.hackathon_name}
-                      </span>
-                      <p className="text-xs text-[#0A0A0A]/70 truncate mt-1">
-                        {conv.last_message?.content || "Channel unlocked"}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Right: Message Stream */}
-          <div className="md:col-span-2 flex flex-col h-full bg-[#FFFFFF]">
-            {/* Chat Room Header */}
-            {otherParticipant && (
-              <div className="p-4 border-b-2 border-[#0A0A0A] flex items-center justify-between bg-[#FFFFFF]">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full border border-[#0A0A0A] bg-[#B8F2C9] flex items-center justify-center font-bold text-sm">
-                    {otherParticipant.name.charAt(0)}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Link href={`/p/${otherParticipant.id}`} className="hover:underline">
-                        <h3 className="font-bold text-sm text-[#0A0A0A]">{otherParticipant.name}</h3>
-                      </Link>
-                      <Badge variant="green" size="sm">
-                        {otherParticipant.reliability_score}/100 Trust
-                      </Badge>
-                    </div>
-                    <p className="text-[11px] text-[#0A0A0A]/60">
-                      {otherParticipant.college} &bull; {activeConversation?.hackathon_name}
+                    <p className="leading-relaxed">{msg.content}</p>
+                    <p className={`text-xs mt-1 ${isMe ? 'text-black/50' : 'text-white/30'} text-right`}>
+                      {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {isMe && msg.read_at && ' ✓✓'}
                     </p>
                   </div>
                 </div>
+              )
+            })
+          )}
 
-                <div className="flex items-center gap-2">
-                  <Link href="/teams">
-                    <Button variant="secondary" size="sm" className="font-bold text-xs">
-                      <Lock className="h-3 w-3 mr-1" /> Lock Team
-                    </Button>
-                  </Link>
-                  <button
-                    onClick={() => setReportModalOpen(true)}
-                    className="p-2 rounded-[8px] text-[#0A0A0A]/60 hover:text-[#0A0A0A] hover:bg-[#0A0A0A]/5"
-                    title="Report or Block User"
-                  >
-                    <Flag className="h-4 w-4" />
-                  </button>
-                </div>
+          {/* Typing indicator */}
+          {isTyping && (
+            <div className="flex justify-start">
+              <div className="bg-white/10 px-4 py-3 flex items-center gap-1">
+                {[0, 1, 2].map((i) => (
+                  <span
+                    key={i}
+                    className="w-1.5 h-1.5 bg-white/60 rounded-full animate-bounce"
+                    style={{ animationDelay: `${i * 0.15}s` }}
+                  />
+                ))}
               </div>
-            )}
-
-            {/* Messages Feed */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#0A0A0A]/[0.01]">
-              <div className="text-center py-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#0A0A0A]/40 bg-[#0A0A0A]/[0.05] px-2.5 py-1 rounded-full border border-[#0A0A0A]/10">
-                  Mutual Match Accepted &bull; End-to-End Logged
-                </span>
-              </div>
-
-              {messages.map((msg) => {
-                const isMe = msg.sender_id === "u-demo-1";
-                return (
-                  <div
-                    key={msg.id}
-                    className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
-                  >
-                    <div
-                      className={`max-w-md rounded-[16px] p-3.5 text-xs sm:text-sm leading-relaxed shadow-sm border ${
-                        isMe
-                          ? "bg-[#B8F2C9] text-[#0A0A0A] border-[#0A0A0A] rounded-tr-none font-medium"
-                          : "bg-[#FFFFFF] text-[#0A0A0A] border-[#0A0A0A]/20 rounded-tl-none font-normal"
-                      }`}
-                    >
-                      {msg.content}
-                    </div>
-                    <span className="text-[10px] text-[#0A0A0A]/40 mt-1 px-1">
-                      {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </div>
-                );
-              })}
-
-              {isTyping && (
-                <div className="flex items-center gap-2 text-xs text-[#0A0A0A]/50 italic pl-1">
-                  <span className="inline-block h-2 w-2 rounded-full bg-[#0A0A0A] animate-pulse" />
-                  <span>{otherParticipant?.name} is typing...</span>
-                </div>
-              )}
-
-              <div ref={messagesEndRef} />
             </div>
+          )}
 
-            {/* Message Input Box */}
-            <form onSubmit={handleSendMessage} className="p-3 border-t-2 border-[#0A0A0A] bg-[#FFFFFF] flex items-center gap-2">
-              <input
-                type="text"
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder="Type your message... Discuss idea, stack, or call link"
-                className="flex-1 h-11 rounded-[12px] border border-[#0A0A0A]/20 bg-[#FFFFFF] px-4 text-xs sm:text-sm text-[#0A0A0A] focus:border-[#0A0A0A] focus:outline-none"
-              />
-              <Button
-                type="submit"
-                variant="primary"
-                size="md"
-                className="font-bold shrink-0 shadow-[2px_2px_0px_#0A0A0A]"
-              >
-                <Send className="h-4 w-4 mr-1" /> Send
-              </Button>
-            </form>
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Input */}
+        <div className="p-4 border-t border-white/10">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              className="flex-1 bg-white/5 border border-white/10 text-white placeholder-white/30 px-4 py-3 text-sm focus:outline-none focus:border-[#B8F2C9]/50 transition-colors"
+              placeholder="Message..."
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={sending}
+            />
+            <Button
+              variant="primary"
+              size="icon"
+              onClick={sendMessage}
+              disabled={!draft.trim() || sending}
+              className="flex-shrink-0 h-[46px] w-[46px] p-0"
+            >
+              {sending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
           </div>
+          <p className="text-white/20 text-xs mt-2 text-center">
+            Keep it respectful. Harassment leads to an immediate ban.
+          </p>
         </div>
       </div>
+    )
+  }
 
-      {/* Report / Block Dialog */}
-      <Dialog
-        isOpen={reportModalOpen}
-        onClose={() => setReportModalOpen(false)}
-        title="Report or Block User"
-        description="Help us maintain a dedicated, respectful community for serious hackathon builders."
+  return (
+    <div className="h-[calc(100vh-4rem)] bg-black flex overflow-hidden">
+      {/* Sidebar — always visible on desktop, hidden on mobile when thread open */}
+      <div
+        className={`w-full lg:w-80 border-r border-white/10 flex-shrink-0 ${
+          selectedConv ? 'hidden lg:flex' : 'flex'
+        } flex-col`}
       >
-        <form onSubmit={handleReport} className="space-y-4">
-          <div>
-            <label className="text-sm font-semibold text-[#0A0A0A] block mb-1.5">
-              Reason for Report
-            </label>
-            <select
-              value={reportReason}
-              onChange={(e) => setReportReason(e.target.value)}
-              className="flex h-11 w-full rounded-[12px] border border-[#0A0A0A]/20 bg-[#FFFFFF] px-3.5 py-2 text-sm text-[#0A0A0A]"
-            >
-              <option value="unresponsive">Unresponsive / Ghosting after accepting</option>
-              <option value="harassment">Inappropriate or unprofessional behavior</option>
-              <option value="fake_profile">Misrepresented skills or fake profile</option>
-              <option value="spam">Commercial spam or solicitations</option>
-            </select>
-          </div>
+        <ConversationList />
+      </div>
 
-          <Textarea
-            label="Provide Specific Details"
-            value={reportDetails}
-            onChange={(e) => setReportDetails(e.target.value)}
-            placeholder="Describe what occurred. Chat logs are securely reviewed by Hackpact moderators."
-            required
-          />
-
-          <div className="pt-2 flex justify-between items-center">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                ChatService.blockUser("u-demo-1", otherParticipant?.id || "");
-                setReportModalOpen(false);
-                setActionNotice("User blocked from your matching feed.");
-              }}
-              className="font-bold text-xs"
-            >
-              <UserX className="h-3.5 w-3.5 mr-1" /> Block User
-            </Button>
-
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setReportModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" variant="primary" className="font-bold">
-                Submit Report
-              </Button>
-            </div>
-          </div>
-        </form>
-      </Dialog>
+      {/* Thread — full screen on mobile when selected */}
+      <div
+        className={`flex-1 ${
+          selectedConv ? 'flex' : 'hidden lg:flex'
+        } flex-col`}
+      >
+        <MessageThread />
+      </div>
     </div>
-  );
+  )
 }

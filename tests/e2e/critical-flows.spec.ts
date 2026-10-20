@@ -69,4 +69,24 @@ test.describe("Hackpact Critical User Flows", () => {
     expect(data.status).toBe("healthy");
     expect(data.product).toBe("Hackpact");
   });
+
+  test("10. Match feed API refuses unauthenticated requests", async ({ request }) => {
+    const response = await request.get("/api/matches");
+    expect(response.status()).toBe(401);
+  });
+
+  test("11. Precompute job refuses requests without the cron secret", async ({ request }) => {
+    const response = await request.post("/api/matching/precompute");
+    expect(response.status()).toBe(401);
+  });
+
+  test("12. Match request API refuses unauthenticated sends", async ({ request }) => {
+    const response = await request.post("/api/match-requests", {
+      data: {
+        receiver_id: "3f2b1a90-0000-4000-8000-000000000001",
+        hackathon_id: "3f2b1a90-0000-4000-8000-000000000002",
+      },
+    });
+    expect(response.status()).toBe(401);
+  });
 });

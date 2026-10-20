@@ -71,6 +71,13 @@ d:/Saathi
 │   │   │   └── admin/             # Concierge match, verification queue, metrics
 │   │   ├── (legal)/               # India DPDP, Terms, Privacy Policy
 │   │   ├── api/                   # REST endpoints, health check, cron jobs
+│   │   │   ├── health/            # Service status probe
+│   │   │   ├── matches/           # GET: ranked match feed for the viewer
+│   │   │   ├── match-requests/    # GET/POST/PATCH: mutual-accept shield
+│   │   │   ├── matching/          # POST: precompute job (cron, CRON_SECRET)
+│   │   │   ├── notifications/     # POST/DELETE: push subscription, push job
+│   │   │   ├── profile/           # POST: GitHub stats sync
+│   │   │   └── user/              # DPDP data export and account deletion
 │   │   ├── design/                # Living design system token style guide
 │   │   ├── layout.tsx             # Root layout with responsive bottom navigation
 │   │   └── page.tsx               # Landing page with cold start city banners
@@ -86,8 +93,9 @@ d:/Saathi
 │   ├── lib/
 │   │   ├── supabase/              # Typed client, server SSR, admin client
 │   │   ├── redis/                 # Rate limiter and cache helpers
-│   │   ├── matching/              # Rule-based scorer, candidate generator, tests
+│   │   ├── matching/              # Scorer, candidate generator, geo parsing, feed
 │   │   ├── services/              # Pure domain services (no React dependencies)
+│   │   ├── notifications/         # Web Push sender (VAPID)
 │   │   ├── validations/           # Zod schemas for forms and API payloads
 │   │   └── utils/                 # Formatting, geo distance, cn helper
 │   ├── types/

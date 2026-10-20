@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 export interface TextareaProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   error?: string;
-  label?: string;
+  label?: React.ReactNode;
   helperText?: string;
 }
 

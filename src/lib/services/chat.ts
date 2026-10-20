@@ -1,9 +1,9 @@
-import type { Conversation, Message, Profile } from "@/types/models";
+﻿import type { Conversation, Message, Profile } from "@/types/models";
 
 const mockConversations: Conversation[] = [
   {
     id: "conv-1",
-    hackathon_id: "h-sih-2026",
+    hackathon_id: "20000000-0000-0000-0000-000000000001",
     hackathon_name: "Smart India Hackathon 2026",
     participants: [
       {

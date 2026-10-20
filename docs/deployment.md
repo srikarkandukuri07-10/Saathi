@@ -35,7 +35,23 @@
    - `UPSTASH_REDIS_REST_URL`
    - `UPSTASH_REDIS_REST_TOKEN`
    - `CRON_SECRET`
+   - `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
+   - `GITHUB_TOKEN` (optional, raises the GitHub API rate limit)
 4. Click **Deploy**.
+5. Configure the scheduled jobs in `vercel.json`:
+
+   ```json
+   {
+     "crons": [
+       { "path": "/api/matching/precompute", "schedule": "0 3 * * *" },
+       { "path": "/api/notifications/push", "schedule": "*/5 * * * *" }
+     ]
+   }
+   ```
+
+   Vercel Cron sends `Authorization: Bearer $CRON_SECRET` automatically. Both
+   routes reject any other caller with `401`. GitHub stats are refreshed by
+   the user from `/settings` (`POST /api/profile/sync-github`), not by cron.
 
 ---
 

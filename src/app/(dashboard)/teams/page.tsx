@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import Link from "next/link";
@@ -28,7 +28,7 @@ export default function TeamsPage() {
 
   React.useEffect(() => {
     async function load() {
-      const data = await TeamService.getTeamsForHackathon("h-sih-2026");
+      const data = await TeamService.getTeamsForHackathon("20000000-0000-0000-0000-000000000001");
       setTeams(data);
       setLoading(false);
     }
@@ -41,7 +41,7 @@ export default function TeamsPage() {
       setTeams(teams.map((t) => (t.id === teamId ? res.team! : t)));
       setLockNotice(
         res.allLocked
-          ? "🎉 All members confirmed! Team is now LOCKED for Smart India Hackathon (+10 Reliability awarded)."
+          ? "ðŸŽ‰ All members confirmed! Team is now LOCKED for Smart India Hackathon (+10 Reliability awarded)."
           : "Your individual commitment confirmed! Waiting for remaining teammates to lock in."
       );
     }

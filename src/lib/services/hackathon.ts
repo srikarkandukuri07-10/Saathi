@@ -1,10 +1,10 @@
-
+﻿
 import type { Hackathon, HackathonMode } from "@/types/models";
 import type { HackathonInput } from "@/lib/validations/hackathon";
 
 const mockHackathons: Hackathon[] = [
   {
-    id: "h-sih-2026",
+    id: "20000000-0000-0000-0000-000000000001",
     name: "Smart India Hackathon 2026",
     slug: "smart-india-hackathon-2026",
     organizer: "Ministry of Education & AICTE",
@@ -15,7 +15,7 @@ const mockHackathons: Hackathon[] = [
     start_date: new Date(Date.now() + 25 * 86400000).toISOString(),
     end_date: new Date(Date.now() + 27 * 86400000).toISOString(),
     registration_deadline: new Date(Date.now() + 12 * 86400000).toISOString(),
-    prize_pool: "₹1,00,000 / Problem Statement",
+    prize_pool: "â‚¹1,00,000 / Problem Statement",
     theme: "GovTech, Smart Automation, Healthcare & Agriculture",
     description:
       "The premier nationwide innovation challenge to solve real-world problems facing government ministries and public sectors.",
@@ -27,7 +27,7 @@ const mockHackathons: Hackathon[] = [
     is_user_going: true,
   },
   {
-    id: "h-hackhyd-2026",
+    id: "20000000-0000-0000-0000-000000000002",
     name: "HackHyderabad 2026",
     slug: "hackhyderabad-2026",
     organizer: "T-Hub Hyderabad",
@@ -38,7 +38,7 @@ const mockHackathons: Hackathon[] = [
     start_date: new Date(Date.now() + 18 * 86400000).toISOString(),
     end_date: new Date(Date.now() + 20 * 86400000).toISOString(),
     registration_deadline: new Date(Date.now() + 7 * 86400000).toISOString(),
-    prize_pool: "₹5,00,000",
+    prize_pool: "â‚¹5,00,000",
     theme: "AI Agents, FinTech & Smart Cities",
     description:
       "Hyderabad's flagship 36-hour external builder hackathon bringing together the top 500 collegiate hackers across Telangana and Andhra Pradesh.",
@@ -50,7 +50,7 @@ const mockHackathons: Hackathon[] = [
     is_user_going: true,
   },
   {
-    id: "h-ethindia-2026",
+    id: "20000000-0000-0000-0000-000000000003",
     name: "EthIndia 2026",
     slug: "ethindia-2026",
     organizer: "Devfolio & Ethereum Foundation",
@@ -61,7 +61,7 @@ const mockHackathons: Hackathon[] = [
     start_date: new Date(Date.now() + 40 * 86400000).toISOString(),
     end_date: new Date(Date.now() + 42 * 86400000).toISOString(),
     registration_deadline: new Date(Date.now() + 20 * 86400000).toISOString(),
-    prize_pool: "₹65,00,000+",
+    prize_pool: "â‚¹65,00,000+",
     theme: "Web3 Infrastructure, Zero-Knowledge & DeFi",
     description:
       "Asia's largest Ethereum hackathon. Gather with global protocol builders, core devs, and venture funds to build the decentralized web.",
@@ -73,7 +73,7 @@ const mockHackathons: Hackathon[] = [
     is_user_going: false,
   },
   {
-    id: "h-gdsc-2026",
+    id: "20000000-0000-0000-0000-000000000004",
     name: "Google Solution Challenge 2026",
     slug: "google-solution-challenge-2026",
     organizer: "Google Developer Student Clubs",
@@ -96,7 +96,7 @@ const mockHackathons: Hackathon[] = [
     is_user_going: false,
   },
   {
-    id: "h-agentic-2026",
+    id: "20000000-0000-0000-0000-000000000005",
     name: "Devpost Global Agentic AI Hackathon",
     slug: "devpost-agentic-ai-2026",
     organizer: "Devpost",

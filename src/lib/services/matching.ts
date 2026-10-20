@@ -1,8 +1,12 @@
 import { scoreCandidate, type MatchCandidateProfile, type MatchContext } from "@/lib/matching/scorer";
 import type { MatchCandidate, MatchRequest, Profile } from "@/types/models";
 
-// Seeded candidate pool for Hyderabad cold start
-const seededCandidates: MatchCandidateProfile[] = [
+/**
+ * Seeded candidate pool for the Hyderabad cold start.
+ * Used as an explicit, labelled fallback when Supabase is unreachable
+ * (local dev without a database, demos, unit tests).
+ */
+export const seededCandidates: MatchCandidateProfile[] = [
   {
     id: "cand-1",
     name: "Sneha Reddy",
@@ -80,7 +84,8 @@ const mockRequests: MatchRequest[] = [];
 
 export class MatchingService {
   /**
-   * Computes scored candidate list with "Why you match" compatibility cards
+   * Scores the seeded fallback pool. Used when no database is reachable and
+   * by the local demo so the matches surface is never a dead screen.
    */
   static async getMatches(
     user: MatchCandidateProfile,

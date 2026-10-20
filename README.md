@@ -65,7 +65,32 @@ The entire user interface adheres to strictly **three colors**:
 
 ---
 
-## 💻 Quickstart
+## 🧩 Phase Status
+
+| Phase | Scope | Status |
+|---|---|---|
+| 1 | Foundation: Next.js shell, Tailwind tokens, 3-color UI primitives, `/design` style guide | Done |
+| 2 | Data & auth: Postgres/PostGIS schema, strict RLS, OAuth login, gated onboarding | Done |
+| 3 | **Matching engine & notifications**: candidate generation, eligibility gates, precompute job, match-request API, Web Push delivery | Done |
+| 4 | Teams, chat, Lucky Spin, Hall of Fame, waitlist, admin concierge | Surfaces in place, backend wiring continues |
+| 5 | Launch hardening: load tests, deployment runbook, PWA polish | In progress |
+
+### Phase 3 — Matching Pipeline
+
+- `src/lib/matching/scorer.ts` — the explainable, unit-tested scorer (complementarity 40%, goals 20%, proximity 15%, availability 10%, trust 15%, fairness ±5%).
+- `src/lib/matching/candidateGenerator.ts` — pure candidate generation and the hard eligibility gates (self, banned, opt-out, onboarding, 80% completeness floor, blocks, existing connections).
+- `src/lib/matching/location.ts` — PostGIS `geography` parsing (GeoJSON, WKB hex, lat/lng) for server-only distance bands.
+- `src/lib/matching/feed.ts` — database-backed feed with a labelled sample-chapter fallback for cold start.
+- `src/app/api/matches` — authenticated feed (`403` while the completeness gate is closed).
+- `src/app/api/matching/precompute` — cron job that scores every eligible pair per published hackathon.
+- `src/app/api/match-requests` — persisted mutual-accept shield; accepting unlocks the 1:1 conversation.
+- `src/app/api/notifications/push` — Web Push delivery for queued notifications (VAPID, service-role only).
+
+Exact GPS coordinates never leave the server: candidates are projected through
+`toPublicProfile`, which strips the `location` field, and the UI only shows
+coarse distance bands.
+
+---
 
 ### 1. Clone & Install
 ```bash
@@ -129,21 +154,38 @@ d:/Saathi
 │   │   │   ├── waitlist       # Hyderabad cold-start progress tracker
 │   │   │   └── admin          # Concierge matcher, verifications & CSV import
 │   │   ├── (legal)/           # DPDP Act, Privacy Policy, Terms of Service
-│   │   ├── api/               # Health endpoint, data export, account delete
+│   │   ├── api/               # Matches feed, match requests, precompute, push, health
 │   │   └── design/            # Living 3-color style guide
 │   ├── components/            # UI components (Button, Card, Input, Progress, Alert)
 │   ├── config/site.ts         # Single Saathi product configuration constant
 │   ├── lib/
-│   │   ├── matching/          # Scorer, candidate generator, fairness logic
+│   │   ├── matching/          # Scorer, candidate generator, geo parsing, feed
+│   │   ├── notifications/     # Web Push sender (VAPID)
 │   │   ├── services/          # Pure domain services (Profile, Team, Hackathon, Chat)
 │   │   └── supabase/          # Client, SSR Server, and Admin Service Role clients
 │   └── types/models.ts        # Complete domain interfaces
 ├── supabase/migrations/       # Postgres DDL migrations with PostGIS and strict RLS
 └── tests/
-    ├── unit/                  # Vitest unit tests (Scorer, Completeness, Privacy)
+    ├── unit/                  # Vitest unit tests (Scorer, Completeness, Candidate Generator)
     ├── e2e/                   # Playwright critical path end-to-end tests
     └── load/                  # k6 load test script (1,000 concurrent users)
 ```
+
+---
+
+## 🔌 API Reference
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/api/health` | No | Service status and active configuration. |
+| GET | `/api/matches` | Yes | Ranked "Why you match" feed for the viewer. `403` while the 80% completeness gate is closed. |
+| GET/POST/PATCH | `/api/match-requests` | Yes | List, send, and answer teammate requests. Accepting unlocks the 1:1 chat. |
+| POST | `/api/matching/precompute` | `CRON_SECRET` | Scores every eligible pair per published hackathon into `match_candidates`. |
+| POST | DELETE | `/api/notifications/subscribe` | Yes | Manage the browser Web Push subscription. |
+| POST | `/api/notifications/push` | `CRON_SECRET` | Delivers queued notifications through Web Push. |
+| POST | `/api/profile/sync-github` | Yes | Pulls public GitHub stats into `profiles.github_stats`. |
+| GET | `/api/user/export-data` | Yes | DPDP Act data export (JSON) of the caller's own data. |
+| DELETE | `/api/user/delete-account` | Yes | DPDP Act right to erasure: personal records removed, profile soft-deleted with a 30 day purge window. |
 
 ---
 

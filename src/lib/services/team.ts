@@ -1,10 +1,10 @@
-
+﻿
 import type { Team, TeamMember, TeamOpenSlot, Profile } from "@/types/models";
 
 const mockTeams: Team[] = [
   {
     id: "team-alpha",
-    hackathon_id: "h-sih-2026",
+    hackathon_id: "20000000-0000-0000-0000-000000000001",
     hackathon_name: "Smart India Hackathon 2026",
     lead_id: "u-demo-1",
     lead_profile: {

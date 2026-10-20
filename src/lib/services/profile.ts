@@ -125,7 +125,13 @@ export class ProfileService {
   static async saveProfile(
     userId: string,
     input: OnboardingProfileInput
-  ): Promise<{ success: boolean; completeness: number; profile: Profile }> {
+  ): Promise<{
+    success: boolean;
+    completeness: number;
+    profile: Profile;
+    persisted: boolean;
+    persistenceError: string | null;
+  }> {
     const completeness = calculateProfileCompleteness({
       name: input.name,
       college: input.college,
@@ -188,10 +194,15 @@ export class ProfileService {
       updated_at: new Date().toISOString(),
     };
 
+    let persisted = false;
+    let persistenceError: string | null = null;
+
     try {
       const supabase = createClient();
-      await supabase.from("profiles").upsert({
+
+      const { error: profileError } = await supabase.from("profiles").upsert({
         id: userId,
+        email: updatedProfile.email,
         name: input.name,
         college: input.college,
         year: input.year,
@@ -208,14 +219,44 @@ export class ProfileService {
         travel_cities: input.travelCities,
         completeness_score: completeness,
         is_onboarded: completeness >= 80,
+        matching_enabled: true,
         updated_at: new Date().toISOString(),
       });
-    } catch {
-      // Supabase offline / dev fallback
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      // Replace the skill set: `skill_id` references the seeded `skills` rows.
+      await supabase.from("profile_skills").delete().eq("profile_id", userId);
+
+      const skillRows = input.skills.map((skill, index) => ({
+        profile_id: userId,
+        skill_id: skill.skillId,
+        proficiency: skill.proficiency,
+        is_primary: skill.isPrimary || index === 0,
+      }));
+
+      if (skillRows.length > 0) {
+        const { error: skillError } = await supabase
+          .from("profile_skills")
+          .insert(skillRows);
+
+        if (skillError) {
+          throw skillError;
+        }
+      }
+
+      persisted = true;
+    } catch (error) {
+      // Supabase offline / dev fallback: the in-memory profile still updates so
+      // the demo flow continues, but the failure is reported to the caller.
+      persistenceError = error instanceof Error ? error.message : "profile write failed";
+      console.error("[profile] persistence failed:", persistenceError);
     }
 
     mockProfilesStore.set(userId, updatedProfile);
-    return { success: true, completeness, profile: updatedProfile };
+    return { success: true, completeness, profile: updatedProfile, persisted, persistenceError };
   }
 
   /**
@@ -270,29 +311,44 @@ export class ProfileService {
   }
 
   /**
-   * Returns list of pre-seeded structured skills
+   * Returns the structured skill catalog.
+   *
+   * The ids are the exact UUIDs seeded by
+   * `supabase/migrations/20261020000003_seed_data.sql` so that
+   * `profile_skills.skill_id` always satisfies its foreign key.
    */
   static getStructuredSkills(): Skill[] {
     return [
-      { id: "s1", name: "Next.js / React", category: "frontend" },
-      { id: "s2", name: "Tailwind CSS", category: "frontend" },
-      { id: "s3", name: "TypeScript", category: "frontend" },
-      { id: "s4", name: "Node.js / Express", category: "backend" },
-      { id: "s5", name: "Python / FastAPI", category: "backend" },
-      { id: "s6", name: "PostgreSQL / Supabase", category: "backend" },
-      { id: "s7", name: "Go (Golang)", category: "backend" },
-      { id: "s8", name: "LLMs & AI Agents", category: "ml_ai" },
-      { id: "s9", name: "PyTorch / Computer Vision", category: "ml_ai" },
-      { id: "s10", name: "Flutter / Dart", category: "mobile" },
-      { id: "s11", name: "React Native", category: "mobile" },
-      { id: "s12", name: "Arduino & ESP32", category: "hardware_iot" },
-      { id: "s13", name: "Raspberry Pi / Robotics", category: "hardware_iot" },
-      { id: "s14", name: "Figma UI/UX", category: "design" },
-      { id: "s15", name: "Product Prototyping", category: "design" },
-      { id: "s16", name: "Product Management", category: "product" },
-      { id: "s17", name: "Docker & Kubernetes", category: "devops" },
-      { id: "s18", name: "Solidity & Smart Contracts", category: "blockchain" },
-      { id: "s19", name: "Pitch Deck & Presentation", category: "pitching" },
+      { id: "10000000-0000-0000-0000-000000000001", name: "Next.js / React", category: "frontend" },
+      { id: "10000000-0000-0000-0000-000000000002", name: "Tailwind CSS", category: "frontend" },
+      { id: "10000000-0000-0000-0000-000000000003", name: "TypeScript", category: "frontend" },
+      { id: "10000000-0000-0000-0000-000000000004", name: "Vue.js / Nuxt", category: "frontend" },
+      { id: "10000000-0000-0000-0000-000000000005", name: "Node.js / Express", category: "backend" },
+      { id: "10000000-0000-0000-0000-000000000006", name: "Python / FastAPI", category: "backend" },
+      { id: "10000000-0000-0000-0000-000000000007", name: "Go (Golang)", category: "backend" },
+      { id: "10000000-0000-0000-0000-000000000008", name: "PostgreSQL / SQL", category: "backend" },
+      { id: "10000000-0000-0000-0000-000000000009", name: "Rust", category: "backend" },
+      { id: "10000000-0000-0000-0000-000000000010", name: "LLMs & AI Agents", category: "ml_ai" },
+      { id: "10000000-0000-0000-0000-000000000011", name: "PyTorch / Deep Learning", category: "ml_ai" },
+      { id: "10000000-0000-0000-0000-000000000012", name: "Computer Vision (OpenCV)", category: "ml_ai" },
+      { id: "10000000-0000-0000-0000-000000000013", name: "NLP & Embeddings", category: "ml_ai" },
+      { id: "10000000-0000-0000-0000-000000000014", name: "Flutter / Dart", category: "mobile" },
+      { id: "10000000-0000-0000-0000-000000000015", name: "React Native", category: "mobile" },
+      { id: "10000000-0000-0000-0000-000000000016", name: "Kotlin (Android)", category: "mobile" },
+      { id: "10000000-0000-0000-0000-000000000017", name: "Arduino & ESP32", category: "hardware_iot" },
+      { id: "10000000-0000-0000-0000-000000000018", name: "Raspberry Pi / Robotics", category: "hardware_iot" },
+      { id: "10000000-0000-0000-0000-000000000019", name: "Embedded C / C++", category: "hardware_iot" },
+      { id: "10000000-0000-0000-0000-000000000020", name: "Figma UI/UX", category: "design" },
+      { id: "10000000-0000-0000-0000-000000000021", name: "Product Prototyping", category: "design" },
+      { id: "10000000-0000-0000-0000-000000000022", name: "3D / Spline / Motion", category: "design" },
+      { id: "10000000-0000-0000-0000-000000000023", name: "Product Management", category: "product" },
+      { id: "10000000-0000-0000-0000-000000000024", name: "User Research & Wireframing", category: "product" },
+      { id: "10000000-0000-0000-0000-000000000025", name: "Docker & Kubernetes", category: "devops" },
+      { id: "10000000-0000-0000-0000-000000000026", name: "AWS / Cloud Infrastructure", category: "devops" },
+      { id: "10000000-0000-0000-0000-000000000027", name: "Solidity & Smart Contracts", category: "blockchain" },
+      { id: "10000000-0000-0000-0000-000000000028", name: "Web3.js / Ethers", category: "blockchain" },
+      { id: "10000000-0000-0000-0000-000000000029", name: "Pitch Deck & Storytelling", category: "pitching" },
+      { id: "10000000-0000-0000-0000-000000000030", name: "Demo Delivery & Presentation", category: "pitching" },
     ];
   }
 }
